@@ -11,9 +11,16 @@ class Messenger {
         // Inform the user that we've read their message 
         this.sendReadReceipt(event.sender.id);
 
+        // for traceability, debugging
+        this.logEvent(event);
+
         // Here I'm just treating quick-reply buttons as postback buttons, to avoid repeating code
         if (event.message.quick_reply != null) {
             return this.receivedPostback({ sender: event.sender, postback: event.message.quick_reply });
+        }
+        else if( event.message.text.toLowerCase() === 'status'
+                || event.message.text.toLowerCase().replace('\'', '').startsWith('whats playing')) {
+            this.getStatus(event.sender.id);
         }
         else {
             this.searchMusic(event.sender.id, event.message.text);
@@ -27,11 +34,19 @@ class Messenger {
                 // Add the track (contained in the payload) to the Spotify queue.
                 // Note: We created this payload data when we created the button in searchMusic()
                 this.sendTypingIndicator(event.sender.id, true);
-                await spotify.queueTrack(payload.track);
-                this.sendTypingIndicator(event.sender.id, false);
+                try {
+                    await spotify.queueTrack(payload.track);
 
-                // All done, notify the user
-                this.sendMessage(event.sender.id, { text: "Thanks! Your track has been added to the Jukebox playlist" });
+                    // All done, notify the user
+                    this.sendMessage(event.sender.id, {text: "Thanks! Your track has been submitted."});
+                }
+                catch( error ) {
+                    this.sendMessage(event.sender.id, {text: error.message});
+                }
+                finally {
+                    this.sendTypingIndicator(event.sender.id, false);
+                }
+
                 break;
             }
             case Commands.SEARCH_MORE: {
@@ -52,7 +67,10 @@ class Messenger {
         const queryEnd = queryBegin + 20;
         const result = await spotify.searchTracks(terms, queryBegin, queryEnd);
 
-        if (result.items.length > 1) {
+        if (result.items.length === 0) {
+            this.sendMessage(sender, { text: "Sorry, we couldn't find that." });
+        }
+        else if (result.items.length > 1) {
             // If there are enough remaining results, we can give the user
             // a 'More' button to pull further results
             const remainingResults = result.total - limit - skip;
@@ -107,7 +125,29 @@ class Messenger {
         // Cancel the 'typing' indicator
         this.sendTypingIndicator(sender, false);
     }
-    
+
+    async getStatus(sender) {
+        this.sendTypingIndicator(sender, true);
+        let status = await spotify.getStatus();
+
+        let message = "";
+        if(status.now_playing) {
+            message = "Now Playing: " + status.now_playing.song_title + " by " + status.now_playing.artist + "\n";
+        }
+        if(status.queued_tracks && status.queued_tracks.length) {
+            message += "Queued Tracks:\n";
+            for(let i = 1; i <= status.queued_tracks.length; i++) {
+                const track = status.queued_tracks[i-1];
+                message += i + ": " + track.song_title + " by " + track.artist + "\n";
+            }
+        }
+        else {
+            message += "There are no queued tracks.";
+        }
+        this.sendMessage(sender, { text: message.trim() });
+        this.sendTypingIndicator(sender, false);
+    }
+
     generatePostbackButton(title, payload) {
         return {
             type: "postback",
@@ -177,6 +217,17 @@ class Messenger {
         catch (error) {
             console.error(`Delivery to Facebook failed (${error})`);
         }
+    }
+
+    logEvent(event) {
+        Promise.resolve(Request({
+            uri: `https://graph.facebook.com/${event.sender.id}?fields=first_name,last_name,profile_pic&access_token=${process.env.MESSENGER_ACCESS_TOKEN}`,
+            json: true
+        }).then( (resp) => {
+            console.log(`Received "${event.message.text}" from ${resp.first_name} ${resp.last_name} ${resp.profile_pic}`);
+        }).catch( (error) => {
+            console.error(`Failed to load profile (${error})`);
+        }));
     }
 }
 

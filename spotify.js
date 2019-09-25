@@ -1,4 +1,7 @@
 const SpotifyWebApi = require("spotify-web-api-node");
+const {Builder, By, Key, until} = require('selenium-webdriver');
+const chrome = require("selenium-webdriver/chrome");
+const DEFAULT_WAIT_MS = 10000;
 
 class Spotify {
 
@@ -9,11 +12,34 @@ class Spotify {
             clientSecret: process.env.SPOTIFY_CLIENT_SECRET,
             redirectUri: process.env.SPOTIFY_CALLBACK
         });
+    }
 
+    async initializeAuthToken() {
         // Generate a Url to authorize access to Spotify (requires login credentials)
-        const scopes = ["playlist-read-private", "playlist-modify", "playlist-modify-private"];
+        const scopes = ["user-modify-playback-state", "user-read-currently-playing", "user-read-playback-state", "streaming"];
         const authorizeUrl = this.api.createAuthorizeURL(scopes, "default-state");
-        console.log(`Authorization required. Please visit ${authorizeUrl}`); 
+        console.log(`Authorization required. Please visit ${authorizeUrl}`);
+
+        // Initialize ChromeDriver for Queuing Tracks
+        const chromeOptions = new chrome.Options();
+        chromeOptions.addArguments("user-data-dir=chromeprofile");
+        chromeOptions.addArguments("--start-maximized");
+        this.driver = await new Builder().forBrowser('chrome').setChromeOptions(chromeOptions).build();
+
+        await this.driver.get(authorizeUrl);
+        await this.driver.findElements(By.id("auth-accept")).then( e => {
+            for( const elem of e ) {
+                console.log("Spotify Authorization. Clicking on Accept");
+                elem.click();
+            }
+        });
+
+        // authenticate if we have to authenticate
+        this.driver.findElements(By.id("login-button")).then( e => {
+            if(e.length) {
+                this.doLogin()
+            }
+        });
     }
 
     isAuthTokenValid() {
@@ -27,36 +53,7 @@ class Spotify {
     }
 
     async initialized() {
-        const playlists = [];
-
-        const limit = 50;
-        let offset = -limit;
-        let total = 0;
-
-        // Download all playlists from Spotify
-        do {
-            offset += limit;
-            const result = await this.api.getUserPlaylists(undefined, { offset: offset, limit: 50 });
-            total = result.body.total;
-
-            const subset = result.body.items.map((playlist) => {
-                return { id: playlist.id, name: playlist.name }; 
-            });
-            playlists.push(...subset);
-
-        } while ((offset + limit) < total);
-
-        // Find and store the SpotifyJukebox playlist. If it doesn't exist,
-        // then we should create it
-        const index = playlists.findIndex((playlist) => playlist.name === process.env.SPOTIFY_PLAYLIST_NAME);
-        if (index >= 0) {
-            this.playlist = playlists[index].id;
-        }
-        else {
-            const result = await this.api.createPlaylist(process.env.SPOTIFY_USER_ID, process.env.SPOTIFY_PLAYLIST_NAME, { public: false });
-            this.playlist = result.body.id;
-        }
-
+        this.verifyLoggedIn(); // make sure browser is ready
         console.log("Spotify is ready!");
     }
 
@@ -65,10 +62,11 @@ class Spotify {
 
         const expiresAt = new Date();
         expiresAt.setSeconds(expiresAt.getSeconds() + result.body.expires_in);
-        this.settings.auth.access_token = result.body.access_token;
-        this.settings.auth.expires_at = expiresAt;
+        this.auth.access_token = result.body.access_token;
+        this.auth.expires_at = expiresAt;
 
         this.api.setAccessToken(result.body.access_token);
+        console.log("Access Token: " + result.body.access_token);
     }
 
     async receivedAuthCode(authCode) {
@@ -84,6 +82,7 @@ class Spotify {
         // Provide the Spotify library with the tokens
         this.api.setAccessToken(this.auth.access_token);
         this.api.setRefreshToken(this.auth.refresh_token);
+        console.log("Access Token: " + this.auth.access_token);
 
         // Perform other start-up tasks, now that we have access to the api
         this.initialized();
@@ -97,11 +96,152 @@ class Spotify {
         return result.body.tracks;
     }
 
-    async queueTrack(track) {
+    async getMyDevices() {
         if (!this.isAuthTokenValid()) {
             await this.refreshAuthToken();
         }
-        return this.api.addTracksToPlaylist(this.playlist, [`spotify:track:${track}`]);
+        return await this.api.getMyDevices();
+    }
+
+    async transferPlaybackToDevice(deviceId, playNow) {
+        if (!this.isAuthTokenValid()) {
+            await this.refreshAuthToken();
+        }
+        return await this.api.transferMyPlayback( { deviceIds: [deviceId], play: playNow });
+    }
+
+    async getPlaybackState() {
+        if (!this.isAuthTokenValid()) {
+            await this.refreshAuthToken();
+        }
+        return await this.api.getMyCurrentPlaybackState();
+    }
+
+    async queueTrack(trackId) {
+        if (!this.isAuthTokenValid()) {
+            await this.refreshAuthToken();
+        }
+
+        // first, check the current playback status; something should be playing before we start to enqueue
+        const playback = await this.getPlaybackState();
+        let device_id;
+        if( playback.body.device ) {
+            device_id = playback.body.device.id;
+
+            // if nothing is currently playing, start playback on the last active device
+            if(!playback.body.is_playing) {
+                await this.api.play();
+            }
+        }
+        else { // if there are currently no devices playing, list available devices and check if our preferred device is there
+            const myDevices = await this.getMyDevices();
+            if( myDevices.body.devices ) {
+                // initiate playback first on preferred device
+                const devices = myDevices.body.devices.filter( dev => { return dev.id === process.env.SPOTIFY_PREFERRED_DEVICE_ID; } );
+                if( devices.length ) {
+                    device_id = devices[0].id;
+                    await this.api.transferMyPlayback({deviceIds: [device_id], play: true});
+                }
+            }
+        }
+
+        if( !device_id ) {
+            throw new Error("Current playback device not found.");
+        }
+
+        const track = await this.api.getTrack(trackId);
+        console.log("Queueing " + track.body.name + " by " + track.body.artists.map( e => e.name ).join(", "));
+        await this.driver.get(track.body.external_urls.spotify);
+
+        // if something is already playing, a modal-dialog will show with "Play Now" or "Add to Queue" buttons
+        await this.driver.wait(until.elementLocated(By.xpath("//div[contains(@class, 'autoplay-modal--visible')]//button[normalize-space()='Add to Queue']")), 5000)
+            .then( e => { e.click(); })
+            .catch( err => {
+                // queue from currently displayed album; we should never get here?
+                console.log( "Unexpected behaviour: " + err );
+                throw new Error("Oops... I'm not sure what happened. Maybe try again in a bit.");
+                /*
+                this.driver.wait(until.elementLocated(By.xpath("//li[contains(@class, 'tracklist-row--active')]//div[contains(@class, 'tracklist-name')]")), DEFAULT_WAIT_MS)
+                    .then( async (t) => {
+                        console.log("Queueing " + await t.getText());
+                        await this.driver.actions({bridge: true}).contextClick(t).perform();
+                        await this.driver.findElement(By.xpath("//nav[contains(@class, 'react-contextmenu--visible')]/div[normalize-space()='Add to Queue']")).click();
+                    })
+                    .catch((err) => {
+                        console.log("Unable to find track!"); // FIXME: throw exception?
+                        console.log(err);
+                    })
+                 */
+            });
+    }
+
+    async getStatus() {
+        const QUEUE_URL = "https://open.spotify.com/queue";
+        if(await this.driver.getCurrentUrl() !== QUEUE_URL) {
+            await this.driver.get(QUEUE_URL);
+        }
+        // wait for content panel to load because I can't guarantee there will always be something
+        // in Now Playing or Next in Queue, but I assume that there will *always* be something in Next Up
+        await this.driver.wait(until.elementLocated(By.xpath("//h2[normalize-space(text())='Next Up']")), DEFAULT_WAIT_MS);
+
+        const nowPlaying = await this._listTracks("Now Playing");
+        const nextInQueue = await this._listTracks("Next in Queue");
+        return {
+            now_playing: nowPlaying.length == 0 ? null : nowPlaying[0],
+            queued_tracks: nextInQueue
+        };
+    }
+
+    // list all tracks with the given heading on https://open.spotify.com/queue
+    async _listTracks(heading) {
+        let trackItemXPath = "//div[h2[normalize-space(text())='{0}']]//div[contains(@class, 'tracklist-name') or contains(@class, 'second-line')]";
+        let tracks = [];
+        const trackItems = await this.driver.findElements(By.xpath(trackItemXPath.replace("{0}", heading)));
+        for(let i = 0; i < trackItems.length; i+=2) {
+            let artistAlbum = (await trackItems[i + 1].getText()).split("\n•\n");
+            let nextTrack = {
+                song_title: await trackItems[i].getText(),
+                    artist: artistAlbum[0]
+            };
+            if(artistAlbum.length > 1) {
+                nextTrack.album = artistAlbum[1];
+            }
+            tracks.push(nextTrack);
+        }
+        return tracks;
+    }
+
+    async verifyLoggedIn() {
+        await this.driver.get("https://open.spotify.com/browse/featured#_=_");
+        const loginButtons = await this.driver.findElements(By.xpath("//button[normalize-space()='Log in']"));
+        if( loginButtons.length ) {
+            await loginButtons[0].click();
+            await this.doLogin();
+        }
+        else {
+            console.log("CHROME: No login button. Already logged in?");
+            const userLink = "//span[@class='UserWidget__user-link']";
+            await this.driver.wait(until.elementLocated(By.xpath(userLink)), DEFAULT_WAIT_MS);
+            const accountName = await this.driver.findElement(By.xpath(userLink)).getText();
+            console.log("CHROME: Logged in as " + accountName);
+        }
+    }
+
+    async doLogin() {
+        if(process.env.SPOTIFY_USERNAME) {
+            await this.driver.findElement(By.id("login-username")).sendKeys(process.env.SPOTIFY_USERNAME);
+            await this.driver.findElement(By.id("login-password")).sendKeys(process.env.SPOTIFY_PASSWORD);
+            await this.driver.findElement(By.id("login-button")).click();
+        }
+        else {
+            await this.driver.findElement(By.xpath("//a[normalize-space()='Log in with Facebook']")).click();
+            const loginBtns = await this.driver.findElements(By.id("loginbutton"));
+            if(loginBtns.length) { // FB credentials may be cached
+                await this.driver.findElement(By.id("email")).sendKeys(process.env.FB_EMAIL);
+                await this.driver.findElement(By.id("pass")).sendKeys(process.env.FB_PASSWORD);
+                await this.driver.findElement(By.id("loginbutton")).click();
+            }
+        }
     }
 }
 

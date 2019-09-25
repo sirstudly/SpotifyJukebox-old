@@ -67,3 +67,37 @@ app.get("/spotify", (req, res) => {
     spotify.receivedAuthCode(req.query.code);
     res.status(200).send();
 });
+
+app.get("/test-search", async (req, res) => {
+    const result = await spotify.searchTracks(req.query.terms, 0, 20);
+    res.set('Content-Type', 'application/json');
+    res.status(200).send(JSON.stringify(result));
+});
+
+app.get("/get-queue", async (req, res) => {
+    const status = await spotify.getStatus();
+    res.set('Content-Type', 'application/json');
+    res.status(200).send(JSON.stringify(status));
+});
+
+app.get("/get-devices", async (req, res) => {
+    const devices = await spotify.getMyDevices();
+    res.set('Content-Type', 'application/json');
+    res.status(200).send(JSON.stringify(devices));
+});
+
+app.get("/transfer-playback", async (req, res) => {
+    const response = await spotify.transferPlaybackToDevice( req.query.deviceId, "true" === req.query.playNow );
+    res.set('Content-Type', 'application/json');
+    res.status(200).send(JSON.stringify(response));
+});
+
+app.get("/get-playback-state", async (req, res) => {
+    const state = await spotify.getPlaybackState();
+    res.set('Content-Type', 'application/json');
+    res.status(200).send(JSON.stringify(state));
+});
+
+(async function initSpotify() {
+    await spotify.initializeAuthToken();
+})();
