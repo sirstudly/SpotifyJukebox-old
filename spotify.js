@@ -1,6 +1,7 @@
 const SpotifyWebApi = require("spotify-web-api-node");
 const {Builder, By, Key, until} = require('selenium-webdriver');
 const chrome = require("selenium-webdriver/chrome");
+const fs = require("fs");
 const DEFAULT_WAIT_MS = 10000;
 
 class Spotify {
@@ -22,8 +23,9 @@ class Spotify {
 
         // Initialize ChromeDriver for Queuing Tracks
         const chromeOptions = new chrome.Options();
-        chromeOptions.addArguments("user-data-dir=chromeprofile");
-        chromeOptions.addArguments("--start-maximized");
+        for( const opt of process.env.CHROME_OPTIONS.split(' ') ) {
+            chromeOptions.addArguments(opt);
+        }
         this.driver = await new Builder().forBrowser('chrome').setChromeOptions(chromeOptions).build();
 
         await this.driver.get(authorizeUrl);
@@ -153,26 +155,17 @@ class Spotify {
         console.log("Queueing " + track.body.name + " by " + track.body.artists.map( e => e.name ).join(", "));
         await this.driver.get(track.body.external_urls.spotify);
 
-        // if something is already playing, a modal-dialog will show with "Play Now" or "Add to Queue" buttons
-        await this.driver.wait(until.elementLocated(By.xpath("//div[contains(@class, 'autoplay-modal--visible')]//button[normalize-space()='Add to Queue']")), 5000)
-            .then( e => { e.click(); })
-            .catch( err => {
-                // queue from currently displayed album; we should never get here?
-                console.log( "Unexpected behaviour: " + err );
-                throw new Error("Oops... I'm not sure what happened. Maybe try again in a bit.");
-                /*
-                this.driver.wait(until.elementLocated(By.xpath("//li[contains(@class, 'tracklist-row--active')]//div[contains(@class, 'tracklist-name')]")), DEFAULT_WAIT_MS)
+        // if something is already playing, a modal-dialog *used* to show with "Play Now" or "Add to Queue" buttons
+        await this.driver.wait(until.elementLocated(By.xpath("//div[contains(@class, 'autoplay-modal--visible')]//button[normalize-space()='Add to Queue']")), DEFAULT_WAIT_MS/2 )
+            .then( button => { return button.click(); } )
+            .catch( () => { // queue from currently displayed album
+                this.driver.wait(until.elementLocated(By.xpath("//li[contains(@class, 'tracklist-row--highlighted')]//div[contains(@class, 'tracklist-name')]")), DEFAULT_WAIT_MS)
                     .then( async (t) => {
-                        console.log("Queueing " + await t.getText());
+                        console.log("Queueing from context menu: " + await t.getText());
                         await this.driver.actions({bridge: true}).contextClick(t).perform();
                         await this.driver.findElement(By.xpath("//nav[contains(@class, 'react-contextmenu--visible')]/div[normalize-space()='Add to Queue']")).click();
-                    })
-                    .catch((err) => {
-                        console.log("Unable to find track!"); // FIXME: throw exception?
-                        console.log(err);
-                    })
-                 */
-            });
+                    });
+            } );
     }
 
     async getStatus() {
@@ -235,13 +228,48 @@ class Spotify {
         }
         else {
             await this.driver.findElement(By.xpath("//a[normalize-space()='Log in with Facebook']")).click();
-            const loginBtns = await this.driver.findElements(By.id("loginbutton"));
-            if(loginBtns.length) { // FB credentials may be cached
-                await this.driver.findElement(By.id("email")).sendKeys(process.env.FB_EMAIL);
-                await this.driver.findElement(By.id("pass")).sendKeys(process.env.FB_PASSWORD);
-                await this.driver.findElement(By.id("loginbutton")).click();
-            }
+            await this.driver.findElements(By.id("loginbutton"))
+                .then( async (loginBtns) => {
+                    if(loginBtns.length) { // FB credentials may be cached
+                        console.log("Logging in via Facebook");
+                        await this.driver.findElement(By.id("email")).sendKeys(process.env.FB_EMAIL);
+                        await this.driver.findElement(By.id("pass")).sendKeys(process.env.FB_PASSWORD);
+                        await loginBtns[0].click();
+                        await this.driver.wait(until.stalenessOf(loginBtns[0]), DEFAULT_WAIT_MS);
+                    }
+                });
+            await this.driver.findElements(By.id("auth-accept"))
+                .then( async(authButtons) => {
+                    if(authButtons.length) {
+                        console.log("Accepting consent for updating Spotify");
+                        await authButtons[0].click();
+                        await this.driver.wait(until.stalenessOf(authButtons[0]), DEFAULT_WAIT_MS);
+                    }
+                });
         }
+    }
+
+    async takeScreenshot(url, filename) {
+        await this.driver.get(url)
+            .then( () => {
+                this.saveScreenshot(filename);
+            });
+    }
+
+    async savePageSource(filename) {
+        const currentUrl = await this.driver.getCurrentUrl();
+        console.log( "Writing source to " + filename + " for " + currentUrl );
+        await this.driver.getPageSource().then(src => {
+            fs.writeFileSync(filename, src, function (err) { throw err; });
+        });
+    }
+
+    async saveScreenshot(filename) {
+        await this.driver.takeScreenshot().then(
+            function (image, err) {
+                fs.writeFileSync(filename, image, 'base64', function (err) { throw err; });
+            }
+        );
     }
 }
 

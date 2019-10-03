@@ -3,6 +3,7 @@ dotenv.config();
 const express = require("express");
 const messenger = require("./messenger");
 const spotify = require("./spotify");
+const path = require("path");
 const bodyParser = require("body-parser");
 
 const app = express();
@@ -64,38 +65,69 @@ app.post("/webhook", (req, res) => {
 });
 
 app.get("/spotify", (req, res) => {
-    spotify.receivedAuthCode(req.query.code);
-    res.status(200).send();
+    spotify.receivedAuthCode(req.query.code)
+        .then( () => { res.status(200).send(); })
+        .catch( err => { res.status(500).send(JSON.stringify(err)); } );
 });
 
-app.get("/test-search", async (req, res) => {
-    const result = await spotify.searchTracks(req.query.terms, 0, 20);
+app.get("/search", async (req, res) => {
     res.set('Content-Type', 'application/json');
-    res.status(200).send(JSON.stringify(result));
+    spotify.searchTracks(req.query.terms, 0, 20)
+        .then( result => { res.status(200).send(JSON.stringify(result)); })
+        .catch( err => { res.status(500).send(JSON.stringify(err)); } );
 });
 
 app.get("/get-queue", async (req, res) => {
-    const status = await spotify.getStatus();
     res.set('Content-Type', 'application/json');
-    res.status(200).send(JSON.stringify(status));
+    spotify.getStatus()
+        .then( status => { res.status(200).send(JSON.stringify(status));} )
+        .catch( err => { res.status(500).send(JSON.stringify(err)); } );
 });
 
 app.get("/get-devices", async (req, res) => {
-    const devices = await spotify.getMyDevices();
     res.set('Content-Type', 'application/json');
-    res.status(200).send(JSON.stringify(devices));
+    spotify.getMyDevices()
+        .then( devices => { res.status(200).send(JSON.stringify(devices)); } )
+        .catch( err => { res.status(500).send(JSON.stringify(err)); } );
 });
 
 app.get("/transfer-playback", async (req, res) => {
-    const response = await spotify.transferPlaybackToDevice( req.query.deviceId, "true" === req.query.playNow );
     res.set('Content-Type', 'application/json');
-    res.status(200).send(JSON.stringify(response));
+    spotify.transferPlaybackToDevice( req.query.deviceId, "true" === req.query.playNow )
+        .then( response => { res.status(200).send(JSON.stringify(response)); } )
+        .catch( err => { res.status(500).send(JSON.stringify(err)); } );
+});
+
+app.get("/queue-track", async (req, res) => {
+    res.set('Content-Type', 'application/json');
+    spotify.queueTrack( req.query.trackId )
+        .then( state => { res.status(200).send(JSON.stringify({ status: "OK" })); } )
+        .catch( err => { res.status(500).send(JSON.stringify(err)); } );
 });
 
 app.get("/get-playback-state", async (req, res) => {
-    const state = await spotify.getPlaybackState();
     res.set('Content-Type', 'application/json');
-    res.status(200).send(JSON.stringify(state));
+    spotify.getPlaybackState()
+        .then( state => { res.status(200).send(JSON.stringify(state)); } )
+        .catch( err => { res.status(500).send(JSON.stringify(err)); } );
+});
+
+app.get("/dump-screenshot", async (req, res) => {
+    spotify.saveScreenshot("screenshot.png")
+        .then( () => { res.sendFile(path.join(__dirname, 'screenshot.png') ); } )
+        .catch( err => { res.status(500).send(JSON.stringify(err)); } );
+});
+
+app.get("/dump-webpage", async (req, res) => {
+    spotify.savePageSource("currentpage.html")
+        .then( () => { res.sendFile(path.join(__dirname, 'currentpage.html') ); } )
+        .catch( err => { res.status(500).send(JSON.stringify(err)); } );
+});
+
+app.get("/dump-ngrok", async (req, res) => {
+    spotify.takeScreenshot("http://localhost:4040/status", "currentpage.png")
+        .then( () => { res.sendFile(path.join(__dirname, 'currentpage.png') ); } )
+        .catch( err => { res.status(500).send(JSON.stringify(err)); } );
 });
 
 (async function initSpotify() {
