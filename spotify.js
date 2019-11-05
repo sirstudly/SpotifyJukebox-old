@@ -157,14 +157,15 @@ class Spotify {
 
         // if something is already playing, a modal-dialog *used* to show with "Play Now" or "Add to Queue" buttons
         await this.driver.wait(until.elementLocated(By.xpath("//div[contains(@class, 'autoplay-modal--visible')]//button[normalize-space()='Add to Queue']")), DEFAULT_WAIT_MS/2 )
-            .then( button => { return button.click(); } )
+            .then( button => button.click() )
             .catch( () => { // queue from currently displayed album
                 this.driver.wait(until.elementLocated(By.xpath("//li[contains(@class, 'tracklist-row--highlighted')]//div[contains(@class, 'tracklist-name')]")), DEFAULT_WAIT_MS)
                     .then( async (t) => {
                         console.log("Queueing from context menu: " + await t.getText());
                         await this.driver.actions({bridge: true}).contextClick(t).perform();
-                        await this.driver.findElement(By.xpath("//nav[contains(@class, 'react-contextmenu--visible')]/div[normalize-space()='Add to Queue']")).click();
-                    });
+                        await this.driver.wait(until.elementLocated(By.xpath("//nav[contains(@class, 'react-contextmenu--visible')]/div[normalize-space()='Add to Queue']")), DEFAULT_WAIT_MS/2 )
+                            .then( async (div) => { await this.driver.executeScript("arguments[0].click();", div); } )
+                    } );
             } );
     }
 

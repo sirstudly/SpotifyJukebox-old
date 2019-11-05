@@ -65,63 +65,69 @@ class Messenger {
         // We'll order those by popularity and present the user with the top few results
         const queryBegin = skip - (skip % 20);
         const queryEnd = queryBegin + 20;
-        const result = await spotify.searchTracks(terms, queryBegin, queryEnd);
+        await spotify.searchTracks(terms, queryBegin, queryEnd)
+            .then( result => {
+                if (result.items.length === 0) {
+                    this.sendMessage(sender, { text: "Sorry, we couldn't find that." });
+                }
+                else if (result.items.length > 1) {
+                    // If there are enough remaining results, we can give the user
+                    // a 'More' button to pull further results
+                    const remainingResults = result.total - limit - skip;
+                    const showMoreButton = (remainingResults > 0);
 
-        if (result.items.length === 0) {
-            this.sendMessage(sender, { text: "Sorry, we couldn't find that." });
-        }
-        else if (result.items.length > 1) {
-            // If there are enough remaining results, we can give the user
-            // a 'More' button to pull further results
-            const remainingResults = result.total - limit - skip;
-            const showMoreButton = (remainingResults > 0);
+                    // Sort the results by popularity
+                    result.items.sort((a, b) => (b.popularity - a.popularity));
+                    // Take the correct subset of tracks according to skip and limit
+                    result.items = result.items.slice(skip, skip + limit);
 
-            // Sort the results by popularity
-            result.items.sort((a, b) => (b.popularity - a.popularity));
-            // Take the correct subset of tracks according to skip and limit
-            result.items = result.items.slice(skip, skip + limit);
+                    const message = {
+                        attachment: {
+                            type: "template",
+                            payload: {
+                                template_type: "generic",
+                                elements: [],
+                            }
+                        },
+                        quick_replies: []
+                    };
 
-            const message = {
-                attachment: {
-                    type: "template",
-                    payload: {
-                        template_type: "generic",
-                        elements: [],
+                    // Add the more button if there were enough results. We provide the button
+                    // with all of the data it needs to be able to call this search function again and
+                    // get the next batch of results
+                    if (showMoreButton) {
+                        message.quick_replies = [{
+                            content_type: "text",
+                            title: "More Results",
+                            payload: JSON.stringify({
+                                command: Commands.SEARCH_MORE,
+                                terms: terms,
+                                skip: skip + limit,
+                                limit: limit
+                            })
+                        }];
                     }
-                },
-                quick_replies: []
-            };
 
-            // Add the more button if there were enough results. We provide the button
-            // with all of the data it needs to be able to call this search function again and
-            // get the next batch of results
-            if (showMoreButton) {
-                message.quick_replies = [{
-                    content_type: "text",
-                    title: "More Results",
-                    payload: JSON.stringify({ 
-                        command: Commands.SEARCH_MORE, 
-                        terms: terms, 
-                        skip: skip + limit, 
-                        limit: limit 
-                    })
-                }];
-            }
+                    // Build a list of buttons for each result track
+                    message.attachment.payload.elements = result.items.map((track) => {
+                        this.sortTrackArtwork(track);
+                        return {
+                            title: track.name,
+                            subtitle: this.generateArtistList(track),
+                            buttons: [this.generatePostbackButton("Add", { command: Commands.ADD_TRACK, track: track.id })],
+                            image_url: track.album.images.length > 0 ? track.album.images[0].url : ""
+                        };
+                    });
 
-            // Build a list of buttons for each result track
-            message.attachment.payload.elements = result.items.map((track) => {
-                this.sortTrackArtwork(track);
-                return {
-                    title: track.name,
-                    subtitle: this.generateArtistList(track),
-                    buttons: [this.generatePostbackButton("Add", { command: Commands.ADD_TRACK, track: track.id })],
-                    image_url: track.album.images.length > 0 ? track.album.images[0].url : ""
-                };
+                    // Send the finished result to the user
+                    this.sendMessage(sender, message);
+                }
+            })
+            .catch( err => {
+                console.error("Error searching for " + terms + ": " + err);
+                this.sendMessage(sender, { text: "Oops.. Computer says no. Maybe try again later." });
             });
 
-            // Send the finished result to the user
-            await this.sendMessage(sender, message);
-        }
         // Cancel the 'typing' indicator
         this.sendTypingIndicator(sender, false);
     }
@@ -211,23 +217,28 @@ class Messenger {
     }
 
     async send(payload) {
-        try {
-            await Promise.resolve(Request.post(payload));
+        return this.attemptSend(payload, 5);
+    }
+
+    async attemptSend(payload, attemptsRemaining) {
+        if(attemptsRemaining > 0) {
+            await Request.post(payload)
+                .catch(error => {
+                    console.error(`Delivery to Facebook failed (${error})`);
+                    this.attemptSend(payload, attemptsRemaining - 1);
+                });
         }
-        catch (error) {
-            console.error(`Delivery to Facebook failed (${error})`);
+        else {
+            console.error("Unable to deliver message. Giving up.");
         }
     }
 
     logEvent(event) {
         Promise.resolve(Request({
             uri: `https://graph.facebook.com/${event.sender.id}?fields=first_name,last_name,profile_pic&access_token=${process.env.MESSENGER_ACCESS_TOKEN}`,
-            json: true
-        }).then( (resp) => {
-            console.log(`Received "${event.message.text}" from ${resp.first_name} ${resp.last_name} ${resp.profile_pic}`);
-        }).catch( (error) => {
-            console.error(`Failed to load profile (${error})`);
-        }));
+            json: true })
+        .then(resp => console.log(`Received "${event.message.text}" from ${resp.first_name} ${resp.last_name} ${resp.profile_pic}`))
+        .catch(error => console.error(`Failed to load profile (${error})`)));
     }
 }
 
