@@ -19,7 +19,8 @@ class Messenger {
             return this.receivedPostback({ sender: event.sender, postback: event.message.quick_reply });
         }
         else if( event.message.text.toLowerCase() === 'status'
-                || event.message.text.toLowerCase().replace('\'', '').startsWith('whats playing')) {
+                || event.message.text.toLowerCase().replace("'", '')
+                    .replace('’', '').startsWith('whats playing')) {
             this.getStatus(event.sender.id);
         }
         else {
@@ -28,6 +29,7 @@ class Messenger {
     }
 
     async receivedPostback(event) {
+        this.logEvent(event); // for traceability, debugging
         const payload = JSON.parse(event.postback.payload);
         switch (payload.command) {
             case Commands.ADD_TRACK: {
@@ -36,17 +38,17 @@ class Messenger {
                 this.sendTypingIndicator(event.sender.id, true);
                 try {
                     await spotify.queueTrack(payload.track);
-
-                    // All done, notify the user
                     this.sendMessage(event.sender.id, {text: "Thanks! Your track has been submitted."});
                 }
-                catch( error ) {
-                    this.sendMessage(event.sender.id, {text: error.message});
+                catch (error) {
+                    console.error(error);
+                    this.sendMessage(event.sender.id, { text: error instanceof ReferenceError ?
+                            error.message : "Oops.. Computer says no. Maybe try again later."
+                    });
                 }
                 finally {
                     this.sendTypingIndicator(event.sender.id, false);
                 }
-
                 break;
             }
             case Commands.SEARCH_MORE: {
@@ -88,8 +90,7 @@ class Messenger {
                                 template_type: "generic",
                                 elements: [],
                             }
-                        },
-                        quick_replies: []
+                        }
                     };
 
                     // Add the more button if there were enough results. We provide the button
@@ -134,23 +135,27 @@ class Messenger {
 
     async getStatus(sender) {
         this.sendTypingIndicator(sender, true);
-        let status = await spotify.getStatus();
-
-        let message = "";
-        if(status.now_playing) {
-            message = "Now Playing: " + status.now_playing.song_title + " by " + status.now_playing.artist + "\n";
-        }
-        if(status.queued_tracks && status.queued_tracks.length) {
-            message += "Queued Tracks:\n";
-            for(let i = 1; i <= status.queued_tracks.length; i++) {
-                const track = status.queued_tracks[i-1];
-                message += i + ": " + track.song_title + " by " + track.artist + "\n";
-            }
-        }
-        else {
-            message += "There are no queued tracks.";
-        }
-        this.sendMessage(sender, { text: message.trim() });
+        await spotify.getStatus()
+            .then( status => {
+                let message = "";
+                if (status.now_playing) {
+                    message = "Now Playing: " + status.now_playing.song_title + " by " + status.now_playing.artist + "\n";
+                }
+                if (status.queued_tracks && status.queued_tracks.length) {
+                    message += "Queued Tracks:\n";
+                    for (let i = 1; i <= status.queued_tracks.length; i++) {
+                        const track = status.queued_tracks[i - 1];
+                        message += i + ": " + track.song_title + " by " + track.artist + "\n";
+                    }
+                } else {
+                    message += "There are no queued tracks.";
+                }
+                this.sendMessage(sender, {text: message.trim()});
+            })
+            .catch( error => {
+                console.error( error );
+                this.sendMessage(sender, { text: "Oops.. Computer says no. Maybe try again later." });
+            });
         this.sendTypingIndicator(sender, false);
     }
 
@@ -237,7 +242,11 @@ class Messenger {
         Promise.resolve(Request({
             uri: `https://graph.facebook.com/${event.sender.id}?fields=first_name,last_name,profile_pic&access_token=${process.env.MESSENGER_ACCESS_TOKEN}`,
             json: true })
-        .then(resp => console.log(`Received "${event.message.text}" from ${resp.first_name} ${resp.last_name} ${resp.profile_pic}`))
+        .then(resp => {
+            const msg = event.message && event.message.text ? `"${event.message.text}"` :
+                event.postback && event.postback.payload ? `"${event.postback.payload}"` : JSON.stringify( event );
+            console.log(`Received ${msg} from ${resp.first_name} ${resp.last_name} ${resp.profile_pic}`)
+        })
         .catch(error => console.error(`Failed to load profile (${error})`)));
     }
 }

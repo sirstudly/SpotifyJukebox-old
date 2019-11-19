@@ -2,7 +2,8 @@ const SpotifyWebApi = require("spotify-web-api-node");
 const {Builder, By, Key, until} = require('selenium-webdriver');
 const chrome = require("selenium-webdriver/chrome");
 const fs = require("fs");
-const DEFAULT_WAIT_MS = 10000;
+const cq = require('concurrent-queue');
+const DEFAULT_WAIT_MS = 30000;
 
 class Spotify {
 
@@ -13,6 +14,9 @@ class Spotify {
             clientSecret: process.env.SPOTIFY_CLIENT_SECRET,
             redirectUri: process.env.SPOTIFY_CALLBACK
         });
+
+        // restrict singular access to webdriver
+        this.webqueue = cq().limit({concurrency: 1}).process(task => task());
     }
 
     async initializeAuthToken() {
@@ -37,7 +41,7 @@ class Spotify {
         });
 
         // authenticate if we have to authenticate
-        this.driver.findElements(By.id("login-button")).then( e => {
+        await this.driver.findElements(By.id("login-button")).then( e => {
             if(e.length) {
                 this.doLogin()
             }
@@ -119,9 +123,14 @@ class Spotify {
         return await this.api.getMyCurrentPlaybackState();
     }
 
-    async queueTrack(trackId) {
+    queueTrack(trackId) {
+        return this.webqueue(() => this._queueTrack(trackId));
+    }
+
+    async _queueTrack(trackId) {
         if (!this.isAuthTokenValid()) {
             await this.refreshAuthToken();
+            await this.verifyLoggedIn(); // make sure browser is ready
         }
 
         // first, check the current playback status; something should be playing before we start to enqueue
@@ -148,32 +157,37 @@ class Spotify {
         }
 
         if( !device_id ) {
-            throw new Error("Current playback device not found.");
+            throw new ReferenceError("Current playback device not found.");
         }
 
+        // load page with track
         const track = await this.api.getTrack(trackId);
-        console.log("Queueing " + track.body.name + " by " + track.body.artists.map( e => e.name ).join(", "));
+        console.log("Queueing " + track.body.name + " by " + track.body.artists.map(e => e.name).join(", "));
         await this.driver.get(track.body.external_urls.spotify);
 
-        // if something is already playing, a modal-dialog *used* to show with "Play Now" or "Add to Queue" buttons
-        await this.driver.wait(until.elementLocated(By.xpath("//div[contains(@class, 'autoplay-modal--visible')]//button[normalize-space()='Add to Queue']")), DEFAULT_WAIT_MS/2 )
-            .then( button => button.click() )
-            .catch( () => { // queue from currently displayed album
-                this.driver.wait(until.elementLocated(By.xpath("//li[contains(@class, 'tracklist-row--highlighted')]//div[contains(@class, 'tracklist-name')]")), DEFAULT_WAIT_MS)
-                    .then( async (t) => {
-                        console.log("Queueing from context menu: " + await t.getText());
-                        await this.driver.actions({bridge: true}).contextClick(t).perform();
-                        await this.driver.wait(until.elementLocated(By.xpath("//nav[contains(@class, 'react-contextmenu--visible')]/div[normalize-space()='Add to Queue']")), DEFAULT_WAIT_MS/2 )
-                            .then( async (div) => { await this.driver.executeScript("arguments[0].click();", div); } )
-                    } );
-            } );
+        // queue from currently displayed album
+        const highlightedRow = await this.driver.wait(until.elementLocated(By.xpath("//li[contains(@class, 'tracklist-row--highlighted')]//div[contains(@class, 'tracklist-name')]")), DEFAULT_WAIT_MS);
+        console.log("Queueing from context menu: " + await highlightedRow.getText());
+        const actions = this.driver.actions({bridge: true});
+        await actions.move({origin: highlightedRow}).contextClick(highlightedRow).perform();
+        const addToQueueButton = await this.driver.wait(until.elementLocated(By.xpath("//nav[contains(@class, 'react-contextmenu--visible')]/div[normalize-space()='Add to Queue']")), DEFAULT_WAIT_MS);
+        await actions.move({origin: addToQueueButton}).press().pause(200).release().perform();
     }
 
-    async getStatus() {
-        const QUEUE_URL = "https://open.spotify.com/queue";
-        if(await this.driver.getCurrentUrl() !== QUEUE_URL) {
-            await this.driver.get(QUEUE_URL);
-        }
+    getStatus() {
+        return this.webqueue(() => this._getStatus());
+    }
+
+    async _getStatus() {
+        await this.driver.get("https://open.spotify.com/queue");
+
+        // authenticate if we have to authenticate
+        await this.driver.findElements(By.xpath("//button[text()='Log in']")).then( e => {
+            if(e.length) {
+                this.verifyLoggedIn(); // make sure browser is ready
+            }
+        });
+
         // wait for content panel to load because I can't guarantee there will always be something
         // in Now Playing or Next in Queue, but I assume that there will *always* be something in Next Up
         await this.driver.wait(until.elementLocated(By.xpath("//h2[normalize-space(text())='Next Up']")), DEFAULT_WAIT_MS);
@@ -228,23 +242,25 @@ class Spotify {
             await this.driver.findElement(By.id("login-button")).click();
         }
         else {
-            await this.driver.findElement(By.xpath("//a[normalize-space()='Log in with Facebook']")).click();
+            const FB_LOGIN_BTN_XPATH = "//a[normalize-space()='Log in with Facebook']";
+            await this.driver.wait(until.elementLocated(By.xpath(FB_LOGIN_BTN_XPATH)), DEFAULT_WAIT_MS);
+            await this.driver.findElement(By.xpath(FB_LOGIN_BTN_XPATH)).click();
             await this.driver.findElements(By.id("loginbutton"))
-                .then( async (loginBtns) => {
+                .then( loginBtns => {
                     if(loginBtns.length) { // FB credentials may be cached
                         console.log("Logging in via Facebook");
-                        await this.driver.findElement(By.id("email")).sendKeys(process.env.FB_EMAIL);
-                        await this.driver.findElement(By.id("pass")).sendKeys(process.env.FB_PASSWORD);
-                        await loginBtns[0].click();
-                        await this.driver.wait(until.stalenessOf(loginBtns[0]), DEFAULT_WAIT_MS);
+                        this.driver.findElement(By.id("email")).sendKeys(process.env.FB_EMAIL);
+                        this.driver.findElement(By.id("pass")).sendKeys(process.env.FB_PASSWORD);
+                        loginBtns[0].click();
+                        this.driver.wait(until.stalenessOf(loginBtns[0]), DEFAULT_WAIT_MS);
                     }
                 });
             await this.driver.findElements(By.id("auth-accept"))
-                .then( async(authButtons) => {
+                .then( authButtons => {
                     if(authButtons.length) {
                         console.log("Accepting consent for updating Spotify");
-                        await authButtons[0].click();
-                        await this.driver.wait(until.stalenessOf(authButtons[0]), DEFAULT_WAIT_MS);
+                        authButtons[0].click();
+                        this.driver.wait(until.stalenessOf(authButtons[0]), DEFAULT_WAIT_MS);
                     }
                 });
         }
