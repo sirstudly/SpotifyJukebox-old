@@ -18,7 +18,7 @@ class Messenger {
         if (event.message.quick_reply != null) {
             return this.receivedPostback({ sender: event.sender, postback: event.message.quick_reply });
         }
-        else if( event.message.text.toLowerCase() === 'status'
+        else if( typeof event.message.text == 'undefined' || event.message.text.toLowerCase() === 'status'
                 || event.message.text.toLowerCase().replace("'", '')
                     .replace('’', '').startsWith('whats playing')) {
             this.getStatus(event.sender.id);
