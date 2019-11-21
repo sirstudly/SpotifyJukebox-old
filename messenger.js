@@ -72,7 +72,7 @@ class Messenger {
                 if (result.items.length === 0) {
                     this.sendMessage(sender, { text: "Sorry, we couldn't find that." });
                 }
-                else if (result.items.length > 1) {
+                else if (result.items.length > 0) {
                     // If there are enough remaining results, we can give the user
                     // a 'More' button to pull further results
                     const remainingResults = result.total - limit - skip;
