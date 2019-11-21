@@ -26,3 +26,32 @@ When the application launches, follow the link in the console window to authenti
       * Under Messenger, Settings -> Update Webhooks (e.g. https://xxxxx.ngrok.io/webhook). Verify token is an agreed upon token you make up (MESSENGER_VERIFY_TOKEN).
       * Verify and save
       * If this is the first time, Generate Token - update ``.env``
+   * Send the following POST request:
+```
+curl -X POST \
+  'https://graph.facebook.com/v5.0/me/messenger_profile?access_token=<FILL IN ACCESS TOKEN HERE>' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "get_started": {
+        "payload": "{\"command\": \"GET_STARTED\"}"
+    },
+    "greeting": [
+        {
+            "locale": "default",
+            "text": "Hi {{user_first_name}}! Welcome to the Castle Rock JamBOT! Just start typing your request and we'\''ll see what we have in our catalogue."
+        }
+    ],
+    "persistent_menu": [
+        {
+            "locale": "default",
+            "call_to_actions": [
+                {
+                    "type": "postback",
+                    "title": "What'\''s playing?",
+                    "payload": "{\"command\": \"STATUS\"}"
+                }
+            ]
+        }
+    ]
+}'
+```

@@ -3,7 +3,9 @@ const Request = require("request-promise");
 
 const Commands = {
     ADD_TRACK: "ADD_TRACK",
-    SEARCH_MORE: "SEARCH_MORE"
+    SEARCH_MORE: "SEARCH_MORE",
+    STATUS: "STATUS",
+    GET_STARTED: "GET_STARTED"
 }
 
 class Messenger {
@@ -32,6 +34,10 @@ class Messenger {
         this.logEvent(event); // for traceability, debugging
         const payload = JSON.parse(event.postback.payload);
         switch (payload.command) {
+            case Commands.GET_STARTED: {
+                this.sendMessage(event.sender.id, {text: "What would you like to hear?"});
+                break;
+            }
             case Commands.ADD_TRACK: {
                 // Add the track (contained in the payload) to the Spotify queue.
                 // Note: We created this payload data when we created the button in searchMusic()
@@ -54,6 +60,10 @@ class Messenger {
             case Commands.SEARCH_MORE: {
                 // Call the search method again with the parameters in the payload
                 this.searchMusic(event.sender.id, payload.terms, payload.skip, payload.limit);
+                break;
+            }
+            case Commands.STATUS: {
+                this.getStatus(event.sender.id);
                 break;
             }
         }
