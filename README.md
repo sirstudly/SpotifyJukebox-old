@@ -2,9 +2,15 @@
 
 > This simple Node.js application is a demonstration of how to use the Facebook Messenger and Spotify APIs together to create a 'Jukebox Bot'.
 
+## Update 2019-11-23
+
+This fork updates the original version which uses a custom "playlist" with one that does a true "queue" operation without altering the current playlist on Spotify. It does this by logging into Spotify via Chrome (Selenium) and queuing the song via the web player. This is the best solution that I could find as there is no "Queue" operation available via the Spotify API.
+
+Note, due to licensing restrictions on the integrated web player, this doesn't work on Linux distributions since it uses Chromium rather than Chrome.
+
 # .env variables
 
-The included .env file contains placeholder keys which you will need to provide. For more information about what these mean and how to obtain them, please see my associated tutorial at [https://medium.com/p/70c863337331](https://medium.com/p/70c863337331)
+The included .env file contains placeholder keys which you will need to provide. For more information about what these mean and how to obtain them, please see the associated tutorial at [https://medium.com/p/70c863337331](https://medium.com/p/70c863337331)
 
 # Installation
 
@@ -38,7 +44,7 @@ curl -X POST \
     "greeting": [
         {
             "locale": "default",
-            "text": "Hi {{user_first_name}}! Welcome to the Castle Rock JamBOT! Just start typing your request and we'\''ll see what we have in our catalogue."
+            "text": "Hi {{user_first_name}}! Just start typing your request and we'\''ll see what we have in our catalogue."
         }
     ],
     "persistent_menu": [
