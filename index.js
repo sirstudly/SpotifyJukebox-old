@@ -130,6 +130,12 @@ app.get("/dump-ngrok", async (req, res) => {
         .catch( err => { res.status(500).send(JSON.stringify(err)); } );
 });
 
+app.get("/register-messenger-endpoint", async (req, res) => {
+    spotify.updateMessengerCallback()
+        .then(() => res.status(200).send(JSON.stringify({status: "OK"})))
+        .catch(err => res.status(500).send(JSON.stringify(err)));
+});
+
 (async function initSpotify() {
     await spotify.initializeAuthToken();
 })();

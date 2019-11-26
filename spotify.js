@@ -8,29 +8,30 @@ const DEFAULT_WAIT_MS = 30000;
 class Spotify {
 
     constructor() {
-        // Initialise connection to Spotify
-        this.api = new SpotifyWebApi({
-            clientId: process.env.SPOTIFY_CLIENT_ID,
-            clientSecret: process.env.SPOTIFY_CLIENT_SECRET,
-            redirectUri: process.env.SPOTIFY_CALLBACK
-        });
-
         // restrict singular access to webdriver
         this.webqueue = cq().limit({concurrency: 1}).process(task => task());
     }
 
     async initializeAuthToken() {
-        // Generate a Url to authorize access to Spotify (requires login credentials)
-        const scopes = ["user-modify-playback-state", "user-read-currently-playing", "user-read-playback-state", "streaming"];
-        const authorizeUrl = this.api.createAuthorizeURL(scopes, "default-state");
-        console.log(`Authorization required. Please visit ${authorizeUrl}`);
-
         // Initialize ChromeDriver for Queuing Tracks
         const chromeOptions = new chrome.Options();
         for( const opt of process.env.CHROME_OPTIONS.split(' ') ) {
             chromeOptions.addArguments(opt);
         }
         this.driver = await new Builder().forBrowser('chrome').setChromeOptions(chromeOptions).build();
+        this.ngrokEndpoint = await this._getNgrokEndpoint();
+
+        // Initialise connection to Spotify
+        this.api = new SpotifyWebApi({
+            clientId: process.env.SPOTIFY_CLIENT_ID,
+            clientSecret: process.env.SPOTIFY_CLIENT_SECRET,
+            redirectUri: this.ngrokEndpoint + "/spotify"
+        });
+
+        // Generate a Url to authorize access to Spotify (requires login credentials)
+        const scopes = ["user-modify-playback-state", "user-read-currently-playing", "user-read-playback-state", "streaming"];
+        const authorizeUrl = this.api.createAuthorizeURL(scopes, "default-state");
+        console.log(`Authorization required. Please visit ${authorizeUrl}`);
 
         await this.driver.get(authorizeUrl);
         await this.driver.findElements(By.id("auth-accept")).then( e => {
@@ -92,6 +93,31 @@ class Spotify {
 
         // Perform other start-up tasks, now that we have access to the api
         this.initialized();
+    }
+
+    updateMessengerCallback() {
+        return this.webqueue(() => this._updateMessengerCallback());
+    }
+
+    async _updateMessengerCallback() {
+        await this.driver.get(`https://developers.facebook.com/apps/${process.env.MESSENGER_APP_ID}/messenger/settings/`);
+        await this.driver.wait(until.elementLocated(By.xpath("//div[contains(text(), 'Edit Callback URL')]")), DEFAULT_WAIT_MS).click();
+        const endpoint = await this.driver.wait(until.elementLocated(By.xpath(
+            "//input[@placeholder='Validation requests and Webhook notifications for this object will be sent to this URL.']")), DEFAULT_WAIT_MS);
+        await this._clearWebElement(endpoint);
+        await endpoint.sendKeys(this.ngrokEndpoint + "/webhook");
+        await this.driver.findElement(By.xpath(
+            "//input[@placeholder='Token that Facebook will echo back to you as part of callback URL verification.']"))
+            .sendKeys(process.env.MESSENGER_VERIFY_TOKEN);
+        await this.driver.wait(until.elementLocated(By.xpath("//div[contains(text(),'Verify and Save')]")), DEFAULT_WAIT_MS).click();
+    }
+
+    async _getNgrokEndpoint() {
+        await this.driver.get("http://localhost:4040/status");
+        const ngrok_url = await this.driver.wait(until.elementLocated(By.xpath(
+            "//h4[text()='command_line']/../div/table/tbody/tr[th[text()='URL']]/td")), DEFAULT_WAIT_MS).getText();
+        console.debug("ngrok URL: " + ngrok_url);
+        return ngrok_url;
     }
 
     async searchTracks(terms, skip = 0, limit = 20) {
@@ -287,6 +313,11 @@ class Spotify {
                 fs.writeFileSync(filename, image, 'base64', function (err) { throw err; });
             }
         );
+    }
+
+    async _clearWebElement(elem) {
+        await this.driver.executeScript(elt => elt.select(), elem);
+        await elem.sendKeys(Key.BACK_SPACE);
     }
 }
 
