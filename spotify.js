@@ -262,33 +262,31 @@ class Spotify {
     }
 
     async doLogin() {
-        if(process.env.SPOTIFY_USERNAME) {
-            await this.driver.findElement(By.id("login-username")).sendKeys(process.env.SPOTIFY_USERNAME);
+        if (process.env.SPOTIFY_USERNAME) {
+            const usernameField = await this.driver.findElement(By.id("login-username"));
+            await this._clearWebElement(usernameField);
+            await usernameField.sendKeys(process.env.SPOTIFY_USERNAME);
             await this.driver.findElement(By.id("login-password")).sendKeys(process.env.SPOTIFY_PASSWORD);
             await this.driver.findElement(By.id("login-button")).click();
-        }
-        else {
-            const FB_LOGIN_BTN_XPATH = "//a[normalize-space()='Log in with Facebook']";
-            await this.driver.wait(until.elementLocated(By.xpath(FB_LOGIN_BTN_XPATH)), DEFAULT_WAIT_MS);
-            await this.driver.findElement(By.xpath(FB_LOGIN_BTN_XPATH)).click();
-            await this.driver.findElements(By.id("loginbutton"))
-                .then( loginBtns => {
-                    if(loginBtns.length) { // FB credentials may be cached
-                        console.log("Logging in via Facebook");
-                        this.driver.findElement(By.id("email")).sendKeys(process.env.FB_EMAIL);
-                        this.driver.findElement(By.id("pass")).sendKeys(process.env.FB_PASSWORD);
-                        loginBtns[0].click();
-                        this.driver.wait(until.stalenessOf(loginBtns[0]), DEFAULT_WAIT_MS);
-                    }
-                });
-            await this.driver.findElements(By.id("auth-accept"))
-                .then( authButtons => {
-                    if(authButtons.length) {
-                        console.log("Accepting consent for updating Spotify");
-                        authButtons[0].click();
-                        this.driver.wait(until.stalenessOf(authButtons[0]), DEFAULT_WAIT_MS);
-                    }
-                });
+        } else {
+            const FB_LOGIN_BTN_PATH = By.xpath("//a[normalize-space()='Log in with Facebook']");
+            const loginViaFacebook = await this.driver.wait(until.elementLocated(FB_LOGIN_BTN_PATH), DEFAULT_WAIT_MS);
+            await loginViaFacebook.click();
+            await this.driver.wait(until.stalenessOf(loginViaFacebook), DEFAULT_WAIT_MS);
+            const loginBtns = await this.driver.findElements(By.id("loginbutton"));
+            if (loginBtns.length) { // FB credentials may be cached
+                console.log("Logging in via Facebook");
+                await this.driver.findElement(By.id("email")).sendKeys(process.env.FB_EMAIL);
+                await this.driver.findElement(By.id("pass")).sendKeys(process.env.FB_PASSWORD);
+                await loginBtns[0].click();
+                await this.driver.wait(until.stalenessOf(loginBtns[0]), DEFAULT_WAIT_MS);
+            }
+            const authButtons = await this.driver.findElements(By.id("auth-accept"));
+            if (authButtons.length) {
+                console.log("Accepting consent for updating Spotify");
+                await authButtons[0].click();
+                await this.driver.wait(until.stalenessOf(authButtons[0]), DEFAULT_WAIT_MS);
+            }
         }
     }
 
