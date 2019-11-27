@@ -208,11 +208,11 @@ class Spotify {
         await this.driver.get("https://open.spotify.com/queue");
 
         // authenticate if we have to authenticate
-        await this.driver.findElements(By.xpath("//button[text()='Log in']")).then( e => {
-            if(e.length) {
-                this.verifyLoggedIn(); // make sure browser is ready
-            }
-        });
+        const loginButtons = await this.driver.findElements(By.xpath("//button[text()='Log in']"));
+        if (loginButtons.length) {
+            await this.verifyLoggedIn(); // make sure browser is ready
+            await this.driver.get("https://open.spotify.com/queue"); // reload page
+        }
 
         // wait for content panel to load because I can't guarantee there will always be something
         // in Now Playing or Next in Queue, but I assume that there will *always* be something in Next Up
@@ -250,6 +250,7 @@ class Spotify {
         const loginButtons = await this.driver.findElements(By.xpath("//button[normalize-space()='Log in']"));
         if( loginButtons.length ) {
             await loginButtons[0].click();
+            await this.driver.wait(until.stalenessOf(loginButtons[0]), DEFAULT_WAIT_MS);
             await this.doLogin();
         }
         else {
