@@ -14,15 +14,10 @@ The included .env file contains placeholder keys which you will need to provide.
 
 # Installation
 
- - Clone this repo
- - Run `npm install` to install dependencies
- - Run `npm start` to launch the app
-
-
-When the application launches, follow the link in the console window to authenticate with Spotify
-
-
-# Instructions
+   * Clone this repo
+   * Install [ngrok](https://ngrok.com/) and create an account.
+   * Connect to your ngrok account (eg. ./ngrok authtoken YOURAUTHTOKENHERE)
+   * Run `npm install` to install dependencies
    * Run ``./ngrok http 3000``
    * <strike>Login to https://developer.spotify.com/dashboard/applications, update Client ID and Secret.
       * Under Edit, update Callback to ngrok https address.
