@@ -24,14 +24,16 @@ When the application launches, follow the link in the console window to authenti
 
 # Instructions
    * Run ``./ngrok http 3000``
-   * Login to https://developer.spotify.com/dashboard/applications, update Client ID and Secret.
+   * <strike>Login to https://developer.spotify.com/dashboard/applications, update Client ID and Secret.
       * Under Edit, update Callback to ngrok https address.
-      * Update SPOTIFY parameters in ``.env``
+      * Update SPOTIFY parameters in ``.env``</strike>
+   * Run ``node update-spotify-endpoint.js``
    * Run ``npm start``
-   * Login to https://developers.facebook.com/apps/
+   * <strike>Login to https://developers.facebook.com/apps/
       * Under Messenger, Settings -> Update Webhooks (e.g. https://xxxxx.ngrok.io/webhook). Verify token is an agreed upon token you make up (MESSENGER_VERIFY_TOKEN).
       * Verify and save
-      * If this is the first time, Generate Token - update ``.env``
+      * If this is the first time, Generate Token - update ``.env``</strike>
+   * Hit http://localhost:3000/register-messenger-endpoint with any web browser.
    * Send the following POST request:
 ```
 curl -X POST \
