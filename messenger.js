@@ -239,7 +239,7 @@ class Messenger {
         if(attemptsRemaining > 0) {
             await Request.post(payload)
                 .catch(error => {
-                    console.error(`Delivery to Facebook failed (${error})`);
+                    console.error(`Delivery to Facebook failed (${error}), ${attemptsRemaining} attempts remaining.`);
                     this.attemptSend(payload, attemptsRemaining - 1);
                 });
         }

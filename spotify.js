@@ -9,7 +9,26 @@ class Spotify {
 
     constructor() {
         // restrict singular access to webdriver
-        this.webqueue = cq().limit({concurrency: 1}).process(task => task());
+        // attempt twice. on failure, reinitialize everything and attempt twice more...
+        this.webqueue = cq().limit({concurrency: 1}).process(task =>
+            task().catch( e => {
+                console.log("Attempt 2: " + e);
+                return task();
+            } ).catch( e => {
+                console.log(e);
+                console.log("Something wonky this way comes.. reinitializing...");
+                return this.driver.quit()
+                    .then(() => this.sleep(2000))
+                    .then(() => this.initializeAuthToken()
+                        .then( () => {
+                            console.log("Attempt 3");
+                            return task().catch( ex => {
+                                console.log("Last Attempt: " + ex);
+                                return task();
+                            } )
+                        } ) )
+            } ) )
+        ;
     }
 
     async initializeAuthToken() {
@@ -317,6 +336,10 @@ class Spotify {
     async _clearWebElement(elem) {
         await this.driver.executeScript(elt => elt.select(), elem);
         await elem.sendKeys(Key.BACK_SPACE);
+    }
+
+    sleep(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
     }
 }
 
