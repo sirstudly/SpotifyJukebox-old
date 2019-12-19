@@ -140,6 +140,10 @@ class Spotify {
     }
 
     async searchTracks(terms, skip = 0, limit = 20) {
+        return this.webqueue(() => this._searchTracks(terms, skip, limit));
+    }
+
+    async _searchTracks(terms, skip, limit) {
         if (!this.isAuthTokenValid()) {
             await this.refreshAuthToken();
         }
