@@ -181,6 +181,12 @@ class Spotify {
             await this.refreshAuthToken();
             await this.verifyLoggedIn(); // make sure browser is ready
         }
+        else {
+            const loginButtons = await this.driver.findElements(By.xpath("//button[normalize-space()='Log in']"));
+            if (loginButtons.length) {
+                await this.verifyLoggedIn(); // make sure browser is ready
+            }
+        }
 
         // first, check the current playback status; something should be playing before we start to enqueue
         const playback = await this.getPlaybackState();
@@ -231,7 +237,7 @@ class Spotify {
         await this.driver.get("https://open.spotify.com/queue");
 
         // authenticate if we have to authenticate
-        const loginButtons = await this.driver.findElements(By.xpath("//button[text()='Log in']"));
+        const loginButtons = await this.driver.findElements(By.xpath("//button[normalize-space()='Log in']"));
         if (loginButtons.length) {
             await this.verifyLoggedIn(); // make sure browser is ready
             await this.driver.get("https://open.spotify.com/queue"); // reload page
@@ -291,7 +297,9 @@ class Spotify {
             await this._clearWebElement(usernameField);
             await usernameField.sendKeys(process.env.SPOTIFY_USERNAME);
             await this.driver.findElement(By.id("login-password")).sendKeys(process.env.SPOTIFY_PASSWORD);
-            await this.driver.findElement(By.id("login-button")).click();
+            const loginButton = await this.driver.findElement(By.id("login-button"));
+            await loginButton.click();
+            await this.driver.wait(until.stalenessOf(loginButton), DEFAULT_WAIT_MS);
         } else {
             const FB_LOGIN_BTN_PATH = By.xpath("//a[normalize-space()='Log in with Facebook']");
             const loginViaFacebook = await this.driver.wait(until.elementLocated(FB_LOGIN_BTN_PATH), DEFAULT_WAIT_MS);
