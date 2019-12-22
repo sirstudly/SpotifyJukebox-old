@@ -47,7 +47,7 @@ class Messenger {
                     this.sendMessage(event.sender.id, {text: "Thanks! Your track has been submitted."});
                 }
                 catch (error) {
-                    console.error(error);
+                    this.consoleError(error);
                     this.sendMessage(event.sender.id, { text: error instanceof ReferenceError ?
                             error.message : "Oops.. Computer says no. Maybe try again later."
                     });
@@ -135,7 +135,7 @@ class Messenger {
                 }
             })
             .catch( err => {
-                console.error("Error searching for " + terms + ": " + err);
+                this.consoleError("Error searching for " + terms + ": " + err);
                 this.sendMessage(sender, { text: "Oops.. Computer says no. Maybe try again later." });
             });
 
@@ -163,7 +163,7 @@ class Messenger {
                 this.sendMessage(sender, {text: message.trim()});
             })
             .catch( error => {
-                console.error( error );
+                this.consoleError( error );
                 this.sendMessage(sender, { text: "Oops.. Computer says no. Maybe try again later." });
             });
         this.sendTypingIndicator(sender, false);
@@ -239,25 +239,33 @@ class Messenger {
         if(attemptsRemaining > 0) {
             await Request.post(payload)
                 .catch(error => {
-                    console.error(`Delivery to Facebook failed (${error}), ${attemptsRemaining} attempts remaining.`);
+                    this.consoleError(`Delivery to Facebook failed (${error}), ${attemptsRemaining} attempts remaining.`);
                     this.attemptSend(payload, attemptsRemaining - 1);
                 });
         }
         else {
-            console.error("Unable to deliver message. Giving up.");
+            this.consoleError("Unable to deliver message. Giving up.");
         }
     }
 
     logEvent(event) {
         Promise.resolve(Request({
-            uri: `https://graph.facebook.com/${event.sender.id}?fields=first_name,last_name,profile_pic&access_token=${process.env.MESSENGER_ACCESS_TOKEN}`,
+            uri: `https://graph.facebook.com/${event.sender.id}?fields=first_name,last_name&access_token=${process.env.MESSENGER_ACCESS_TOKEN}`,
             json: true })
         .then(resp => {
             const msg = event.message && event.message.text ? `"${event.message.text}"` :
                 event.postback && event.postback.payload ? `"${event.postback.payload}"` : JSON.stringify( event );
-            console.log(`Received ${msg} from ${resp.first_name} ${resp.last_name} ${resp.profile_pic}`)
+            this.consoleInfo(`Received ${msg} from ${resp.first_name} ${resp.last_name}`)
         })
-        .catch(error => console.error(`Failed to load profile (${error})`)));
+        .catch(error => this.consoleError(`Failed to log event (${error})`)));
+    }
+
+    consoleInfo(message) {
+        console.info(new Date().toLocaleString() + " " + message);
+    }
+
+    consoleError(message) {
+        console.error(new Date().toLocaleString() + " " + message);
     }
 }
 

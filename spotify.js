@@ -12,18 +12,17 @@ class Spotify {
         // attempt twice. on failure, reinitialize everything and attempt twice more...
         this.webqueue = cq().limit({concurrency: 1}).process(task =>
             task().catch( e => {
-                console.log("Attempt 2: " + e);
+                this.consoleError("Attempt 2: " + e);
                 return task();
             } ).catch( e => {
-                console.log(e);
-                console.log("Something wonky this way comes.. reinitializing...");
+                this.consoleError("Something wonky this way comes.. reinitializing... " + e);
                 return this.driver.quit()
                     .then(() => this.sleep(2000))
                     .then(() => this.initializeAuthToken()
                         .then( () => {
-                            console.log("Attempt 3");
+                            this.consoleInfo("Attempt 3");
                             return task().catch( ex => {
-                                console.log("Last Attempt: " + ex);
+                                this.consoleError("Last Attempt: " + ex);
                                 return task();
                             } )
                         } ) )
@@ -50,12 +49,12 @@ class Spotify {
         // Generate a Url to authorize access to Spotify (requires login credentials)
         const scopes = ["user-modify-playback-state", "user-read-currently-playing", "user-read-playback-state", "streaming"];
         const authorizeUrl = this.api.createAuthorizeURL(scopes, "default-state");
-        console.log(`Authorization required. Please visit ${authorizeUrl}`);
+        this.consoleInfo(`Authorization required. Going to ${authorizeUrl}`);
 
         await this.driver.get(authorizeUrl);
         await this.driver.findElements(By.id("auth-accept")).then( e => {
             for( const elem of e ) {
-                console.log("Spotify Authorization. Clicking on Accept");
+                this.consoleInfo("Spotify Authorization. Clicking on Accept");
                 elem.click();
             }
         });
@@ -80,7 +79,7 @@ class Spotify {
 
     async initialized() {
         this.verifyLoggedIn(); // make sure browser is ready
-        console.log("Spotify is ready!");
+        this.consoleInfo("Spotify is ready!");
     }
 
     async refreshAuthToken() {
@@ -92,7 +91,7 @@ class Spotify {
         this.auth.expires_at = expiresAt;
 
         this.api.setAccessToken(result.body.access_token);
-        console.log("Access Token: " + result.body.access_token);
+        this.consoleInfo("Access Token: " + result.body.access_token);
     }
 
     async receivedAuthCode(authCode) {
@@ -108,7 +107,7 @@ class Spotify {
         // Provide the Spotify library with the tokens
         this.api.setAccessToken(this.auth.access_token);
         this.api.setRefreshToken(this.auth.refresh_token);
-        console.log("Access Token: " + this.auth.access_token);
+        this.consoleInfo("Access Token: " + this.auth.access_token);
 
         // Perform other start-up tasks, now that we have access to the api
         this.initialized();
@@ -135,7 +134,7 @@ class Spotify {
         await this.driver.get("http://localhost:4040/status");
         const ngrok_url = await this.driver.wait(until.elementLocated(By.xpath(
             "//h4[text()='command_line']/../div/table/tbody/tr[th[text()='URL']]/td")), DEFAULT_WAIT_MS).getText();
-        console.debug("ngrok URL: " + ngrok_url);
+        this.consoleInfo("ngrok URL: " + ngrok_url);
         return ngrok_url;
     }
 
@@ -217,12 +216,12 @@ class Spotify {
 
         // load page with track
         const track = await this.api.getTrack(trackId);
-        console.log("Queueing " + track.body.name + " by " + track.body.artists.map(e => e.name).join(", "));
+        this.consoleInfo("Queueing " + track.body.name + " by " + track.body.artists.map(e => e.name).join(", "));
         await this.driver.get(track.body.external_urls.spotify);
 
         // queue from currently displayed album
         const highlightedRow = await this.driver.wait(until.elementLocated(By.xpath("//li[contains(@class, 'tracklist-row--highlighted')]//div[contains(@class, 'tracklist-name')]")), DEFAULT_WAIT_MS);
-        console.log("Queueing from context menu: " + await highlightedRow.getText());
+        this.consoleInfo("Queueing from context menu: " + await highlightedRow.getText());
         const actions = this.driver.actions({bridge: true});
         await actions.move({origin: highlightedRow}).contextClick(highlightedRow).perform();
         const addToQueueButton = await this.driver.wait(until.elementLocated(By.xpath("//nav[contains(@class, 'react-contextmenu--visible')]/div[normalize-space()='Add to Queue']")), DEFAULT_WAIT_MS);
@@ -283,11 +282,11 @@ class Spotify {
             await this.doLogin();
         }
         else {
-            console.log("CHROME: No login button. Already logged in?");
+            this.consoleInfo("CHROME: No login button. Already logged in?");
             const userLink = "//span[@class='UserWidget__user-link']";
             await this.driver.wait(until.elementLocated(By.xpath(userLink)), DEFAULT_WAIT_MS);
             const accountName = await this.driver.findElement(By.xpath(userLink)).getText();
-            console.log("CHROME: Logged in as " + accountName);
+            this.consoleInfo("CHROME: Logged in as " + accountName);
         }
     }
 
@@ -307,7 +306,7 @@ class Spotify {
             await this.driver.wait(until.stalenessOf(loginViaFacebook), DEFAULT_WAIT_MS);
             const loginBtns = await this.driver.findElements(By.id("loginbutton"));
             if (loginBtns.length) { // FB credentials may be cached
-                console.log("Logging in via Facebook");
+                this.consoleInfo("Logging in via Facebook");
                 await this.driver.findElement(By.id("email")).sendKeys(process.env.FB_EMAIL);
                 await this.driver.findElement(By.id("pass")).sendKeys(process.env.FB_PASSWORD);
                 await loginBtns[0].click();
@@ -315,7 +314,7 @@ class Spotify {
             }
             const authButtons = await this.driver.findElements(By.id("auth-accept"));
             if (authButtons.length) {
-                console.log("Accepting consent for updating Spotify");
+                this.consoleInfo("Accepting consent for updating Spotify");
                 await authButtons[0].click();
                 await this.driver.wait(until.stalenessOf(authButtons[0]), DEFAULT_WAIT_MS);
             }
@@ -331,7 +330,7 @@ class Spotify {
 
     async savePageSource(filename) {
         const currentUrl = await this.driver.getCurrentUrl();
-        console.log( "Writing source to " + filename + " for " + currentUrl );
+        this.consoleInfo( "Writing source to " + filename + " for " + currentUrl );
         await this.driver.getPageSource().then(src => {
             fs.writeFileSync(filename, src, function (err) { throw err; });
         });
@@ -352,6 +351,14 @@ class Spotify {
 
     sleep(ms) {
         return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    consoleInfo(message) {
+        console.info(new Date().toLocaleString() + " " + message);
+    }
+
+    consoleError(message) {
+        console.error(new Date().toLocaleString() + " " + message);
     }
 }
 
