@@ -73,11 +73,8 @@ class Messenger {
         // Begin a 'typing' indicator to show that we're working on a response
         this.sendTypingIndicator(sender, true);
 
-        // We want to pull results from Spotify 'paginated' in batches of 20.
-        // We'll order those by popularity and present the user with the top few results
-        const queryBegin = skip - (skip % 20);
-        const queryEnd = queryBegin + 20;
-        await spotify.searchTracks(terms, queryBegin, queryEnd)
+        // We want to pull results from Spotify 'paginated' in batches of $limit.
+        await spotify.searchTracks(terms, skip, limit)
             .then( result => {
                 if (result.items.length === 0) {
                     this.sendMessage(sender, { text: "Sorry, we couldn't find that." });
@@ -90,8 +87,6 @@ class Messenger {
 
                     // Sort the results by popularity
                     result.items.sort((a, b) => (b.popularity - a.popularity));
-                    // Take the correct subset of tracks according to skip and limit
-                    result.items = result.items.slice(skip, skip + limit);
 
                     const message = {
                         attachment: {
@@ -255,7 +250,7 @@ class Messenger {
         .then(resp => {
             const msg = event.message && event.message.text ? `"${event.message.text}"` :
                 event.postback && event.postback.payload ? `"${event.postback.payload}"` : JSON.stringify( event );
-            this.consoleInfo(`Received ${msg} from ${resp.first_name} ${resp.last_name}`)
+            this.consoleInfo(`Received ${msg} from ${resp.first_name} ${resp.last_name} (${event.sender.id})`)
         })
         .catch(error => this.consoleError(`Failed to log event (${error})`)));
     }
