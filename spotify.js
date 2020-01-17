@@ -138,11 +138,7 @@ class Spotify {
         return ngrok_url;
     }
 
-    async searchTracks(terms, skip = 0, limit = 20) {
-        return this.webqueue(() => this._searchTracks(terms, skip, limit));
-    }
-
-    async _searchTracks(terms, skip, limit) {
+    async searchTracks(terms, skip = 0, limit = 10) {
         if (!this.isAuthTokenValid()) {
             await this.refreshAuthToken();
         }
@@ -223,7 +219,7 @@ class Spotify {
         const highlightedRow = await this.driver.wait(until.elementLocated(By.xpath("//li[contains(@class, 'tracklist-row--highlighted')]//div[contains(@class, 'tracklist-name')]")), DEFAULT_WAIT_MS);
         this.consoleInfo("Queueing from context menu: " + await highlightedRow.getText());
         const actions = this.driver.actions({bridge: true});
-        await actions.move({duration:5000, origin: highlightedRow}).contextClick(highlightedRow).perform();
+        await actions.move({duration:3000, origin: highlightedRow}).contextClick(highlightedRow).perform();
         const addToQueueButton = await this.driver.wait(until.elementLocated(By.xpath("//nav[contains(@class, 'react-contextmenu--visible')]/div[normalize-space()='Add to Queue']")), DEFAULT_WAIT_MS);
         await actions.move({duration:1000, origin: addToQueueButton, x:0, y:0}).press().pause(200).release().perform();
     }
