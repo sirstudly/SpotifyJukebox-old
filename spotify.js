@@ -30,6 +30,17 @@ class Spotify {
         ;
     }
 
+    // (re)attempt a task, a given number of times
+    async runTask(task, limit = 5) {
+        if (limit <= 0) {
+            this.consoleError("Too many attempts. Giving up.");
+        }
+        return task().catch(e => {
+            this.consoleError(`Attempt failed, ${limit} tries remaining. ` + e);
+            return this.runTask(task, limit - 1);
+        })
+    }
+
     async initializeAuthToken() {
         // Initialize ChromeDriver for Queuing Tracks
         const chromeOptions = new chrome.Options();
@@ -142,8 +153,10 @@ class Spotify {
         if (!this.isAuthTokenValid()) {
             await this.refreshAuthToken();
         }
-        const result = await this.api.searchTracks(terms, { offset: skip, limit: limit });
-        return result.body.tracks;
+        return this.runTask(async () => {
+            const result = await this.api.searchTracks(terms, {offset: skip, limit: limit});
+            return result.body.tracks;
+        });
     }
 
     async getMyDevices() {
