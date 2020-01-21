@@ -32,11 +32,12 @@ class Spotify {
 
     // (re)attempt a task, a given number of times
     async runTask(task, limit = 5) {
-        if (limit <= 0) {
-            this.consoleError("Too many attempts. Giving up.");
-        }
         return task().catch(e => {
             this.consoleError(`Attempt failed, ${limit} tries remaining. ` + e);
+            if (limit <= 0) {
+                this.consoleError("Too many attempts. Giving up.");
+                throw e;
+            }
             return this.runTask(task, limit - 1);
         })
     }
