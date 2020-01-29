@@ -244,15 +244,15 @@ class Messenger {
     }
 
     logEvent(event) {
+        const msg = event.message && event.message.text ? `"${event.message.text}"` :
+            event.postback && event.postback.payload ? `"${event.postback.payload}"` : JSON.stringify( event );
         Promise.resolve(Request({
             uri: `https://graph.facebook.com/${event.sender.id}?fields=first_name,last_name&access_token=${process.env.MESSENGER_ACCESS_TOKEN}`,
             json: true })
         .then(resp => {
-            const msg = event.message && event.message.text ? `"${event.message.text}"` :
-                event.postback && event.postback.payload ? `"${event.postback.payload}"` : JSON.stringify( event );
             this.consoleInfo(`Received ${msg} from ${resp.first_name} ${resp.last_name} (${event.sender.id})`)
         })
-        .catch(error => this.consoleError(`Failed to log event (${error})`)));
+        .catch(error => this.consoleError(`Failed to log event (${error}) from ${event.sender.id}: ${msg}`)));
     }
 
     consoleInfo(message) {
