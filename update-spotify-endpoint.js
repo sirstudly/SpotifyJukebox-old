@@ -17,7 +17,7 @@ async function updateSpotifyCallback(driver, ngrokCallbackUrl) {
         const mainWindowHandle = await driver.getWindowHandle();
         await driver.findElement(By.xpath("//button[text()='Log in']")).click();
         console.info("Waiting for login to Spotify");
-        if (process.env.SPOTIFY_USERNAME) {
+        if (process.env.SPOTIFY_USERNAME && (await driver.findElements(By.id("login-username"))).length() > 0 ) {
             // switch to newly opened window
             const allHandles = await driver.getAllWindowHandles();
             for (let i = 0; i < allHandles.length; i++) {
@@ -47,6 +47,7 @@ async function updateSpotifyCallback(driver, ngrokCallbackUrl) {
     await driver.findElement(By.id("newRedirectUri")).sendKeys(ngrokCallbackUrl);
     await driver.findElement(By.xpath("//form-list[@label='Redirect URIs']//button[@ng-click='addItem()']")).click();
     await driver.findElement(By.xpath("//button[@ng-click='update(application)']")).click();
+    await new Promise(resolve => setTimeout(resolve, 5000)); // delay before quitting to confirm save
 }
 
 (async () => {
