@@ -234,9 +234,9 @@ class Spotify {
         this.consoleInfo("Queueing from context menu: " + await highlightedRow.getText());
         const actions = this.driver.actions({bridge: true});
         this.driver.executeScript('arguments[0].scrollIntoView({block: "center"});', highlightedRow); // move track into view so we can click on it
-        await actions.move({duration:1000, origin: highlightedRow, x:0, y:0}).contextClick(highlightedRow).perform();
+        await actions.move({duration:2000, origin: highlightedRow, x:0, y:0}).pause(1000).contextClick(highlightedRow).perform();
         const addToQueueButton = await this.driver.wait(until.elementLocated(By.xpath("//nav[contains(@class, 'react-contextmenu--visible')]/div[normalize-space()='Add to Queue']")), DEFAULT_WAIT_MS);
-        await actions.move({duration:1000, origin: addToQueueButton, x:0, y:0}).press().pause(200).release().perform();
+        await actions.move({duration:2000, origin: addToQueueButton, x:0, y:0}).pause(1000).press().pause(600).release().perform();
     }
 
     getStatus() {
