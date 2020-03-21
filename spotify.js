@@ -230,10 +230,9 @@ class Spotify {
         await this.driver.get(track.body.external_urls.spotify);
 
         // "Something went wrong" error?
-        const reloadPageButtons = await this.driver.findElements(By.xpath("//button[text()='RELOAD PAGE']"));
-        if (reloadPageButtons.length) {
-            await reloadPageButtons[0].click();
-        }
+        await this.driver.wait(until.elementLocated(By.xpath("//button[text()='RELOAD PAGE']")), 10000)
+            .then(btn => btn.click())
+            .catch(e => { /* do nothing */ });
 
         // queue from currently displayed album
         const highlightedRow = await this.driver.wait(until.elementLocated(By.xpath("//li[contains(@class, 'tracklist-row--highlighted')]//div[contains(@class, 'tracklist-name')]")), DEFAULT_WAIT_MS);
