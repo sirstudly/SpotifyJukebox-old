@@ -229,6 +229,12 @@ class Spotify {
         this.consoleInfo("Queueing " + track.body.name + " by " + track.body.artists.map(e => e.name).join(", "));
         await this.driver.get(track.body.external_urls.spotify);
 
+        // "Something went wrong" error?
+        const reloadPageButtons = await this.driver.findElements(By.xpath("//button[text()='RELOAD PAGE']"));
+        if (reloadPageButtons.length) {
+            await reloadPageButtons[0].click();
+        }
+
         // queue from currently displayed album
         const highlightedRow = await this.driver.wait(until.elementLocated(By.xpath("//li[contains(@class, 'tracklist-row--highlighted')]//div[contains(@class, 'tracklist-name')]")), DEFAULT_WAIT_MS);
         this.consoleInfo("Queueing from context menu: " + await highlightedRow.getText());
