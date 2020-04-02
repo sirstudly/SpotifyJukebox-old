@@ -1,9 +1,20 @@
 const SpotifyWebApi = require("spotify-web-api-node");
+const WebApiRequest = require('spotify-web-api-node/src/webapi-request.js');
+const HttpManager = require('spotify-web-api-node/src/http-manager.js');
 const {Builder, By, Key, until} = require('selenium-webdriver');
 const chrome = require("selenium-webdriver/chrome");
 const fs = require("fs");
 const cq = require('concurrent-queue');
 const DEFAULT_WAIT_MS = 30000;
+
+// add missing add-to-queue functionality
+SpotifyWebApi.prototype.addTrackToQueue = function (trackId, options, callback) {
+    return WebApiRequest.builder(this.getAccessToken())
+        .withPath('/v1/me/player/queue')
+        .withQueryParameters({uri: "spotify:track:" + trackId}, options)
+        .build()
+        .execute(HttpManager.post, callback);
+}
 
 class Spotify {
 
@@ -90,7 +101,7 @@ class Spotify {
     }
 
     async initialized() {
-        this.verifyLoggedIn(); // make sure browser is ready
+        await this.verifyLoggedIn(); // make sure browser is ready
         this.consoleInfo("Spotify is ready!");
     }
 
@@ -122,7 +133,7 @@ class Spotify {
         this.consoleInfo("Access Token: " + this.auth.access_token);
 
         // Perform other start-up tasks, now that we have access to the api
-        this.initialized();
+        await this.initialized();
     }
 
     updateMessengerCallback() {
@@ -181,67 +192,14 @@ class Spotify {
         return await this.api.getMyCurrentPlaybackState();
     }
 
-    queueTrack(trackId) {
-        return this.webqueue(() => this._queueTrack(trackId));
-    }
-
-    async _queueTrack(trackId) {
+    async queueTrack(trackId) {
         if (!this.isAuthTokenValid()) {
             await this.refreshAuthToken();
-            await this.verifyLoggedIn(); // make sure browser is ready
         }
-        else {
-            const loginButtons = await this.driver.findElements(By.xpath("//button[normalize-space()='Log in']"));
-            if (loginButtons.length) {
-                await this.verifyLoggedIn(); // make sure browser is ready
-            }
-        }
-
-        // first, check the current playback status; something should be playing before we start to enqueue
-        const playback = await this.getPlaybackState();
-        let device_id;
-        if( playback.body.device ) {
-            device_id = playback.body.device.id;
-
-            // if nothing is currently playing, start playback on the last active device
-            if(!playback.body.is_playing) {
-                await this.api.play();
-            }
-        }
-        else { // if there are currently no devices playing, list available devices and check if our preferred device is there
-            const myDevices = await this.getMyDevices();
-            if( myDevices.body.devices ) {
-                // initiate playback first on preferred device
-                const devices = myDevices.body.devices.filter( dev => { return dev.id === process.env.SPOTIFY_PREFERRED_DEVICE_ID; } );
-                if( devices.length ) {
-                    device_id = devices[0].id;
-                    await this.api.transferMyPlayback({deviceIds: [device_id], play: true});
-                }
-            }
-        }
-
-        if( !device_id ) {
-            throw new ReferenceError("Current playback device not found.");
-        }
-
-        // load page with track
-        const track = await this.api.getTrack(trackId);
-        this.consoleInfo("Queueing " + track.body.name + " by " + track.body.artists.map(e => e.name).join(", "));
-        await this.driver.get(track.body.external_urls.spotify);
-
-        // "Something went wrong" error?
-        await this.driver.wait(until.elementLocated(By.xpath("//button[text()='RELOAD PAGE']")), 10000)
-            .then(btn => btn.click())
-            .catch(e => { /* do nothing */ });
-
-        // queue from currently displayed album
-        const highlightedRow = await this.driver.wait(until.elementLocated(By.xpath("//li[contains(@class, 'tracklist-row--highlighted')]//div[contains(@class, 'tracklist-name')]")), DEFAULT_WAIT_MS);
-        this.consoleInfo("Queueing from context menu: " + await highlightedRow.getText());
-        const actions = this.driver.actions({bridge: true});
-        this.driver.executeScript('arguments[0].scrollIntoView({block: "center"});', highlightedRow); // move track into view so we can click on it
-        await actions.move({duration:2000, origin: highlightedRow, x:0, y:0}).pause(1000).contextClick(highlightedRow).perform();
-        const addToQueueButton = await this.driver.wait(until.elementLocated(By.xpath("//nav[contains(@class, 'react-contextmenu--visible')]/div[normalize-space()='Add to Queue']")), DEFAULT_WAIT_MS);
-        await actions.move({duration:2000, origin: addToQueueButton, x:0, y:0}).pause(1000).press().pause(600).release().perform();
+        return this.runTask(async () => {
+            const result = await this.api.addTrackToQueue(trackId);
+            this.consoleInfo("Queued track response: " + JSON.stringify(result));
+        });
     }
 
     getStatus() {
