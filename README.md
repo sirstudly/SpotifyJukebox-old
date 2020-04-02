@@ -4,7 +4,8 @@
 
 ## Update 2019-11-23
 
-This fork updates the original version which uses a custom "playlist" with one that does a true "queue" operation without altering the current playlist on Spotify. It does this by logging into Spotify via Chrome (Selenium) and queuing the song via the web player. This is the best solution that I could find as there is no "Queue" operation available via the Spotify API.
+This fork updates the original version which uses a custom "playlist" with one that does a true "queue" operation without altering the current playlist on Spotify. 
+There is also a "What's playing?" command which shows the complete list of queued songs. There is no API call for this so we do this using Spotify Web Player via Chrome (Selenium).
 
 Note, due to licensing restrictions on the integrated web player, this doesn't work on Linux distributions since it uses Chromium rather than Chrome.
 
