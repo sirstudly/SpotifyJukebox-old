@@ -5,6 +5,7 @@ const messenger = require("./messenger");
 const spotify = require("./spotify");
 const path = require("path");
 const bodyParser = require("body-parser");
+process.env.UV_THREADPOOL_SIZE = 128; // prevent ETIMEDOUT, ESOCKETTIMEDOUT
 
 const app = express();
 app.use(bodyParser.json());
