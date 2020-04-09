@@ -4,8 +4,11 @@ const Request = require("request-promise");
 const Commands = {
     ADD_TRACK: "ADD_TRACK",
     SEARCH_MORE: "SEARCH_MORE",
+    SEARCH_MORE_PLAYLISTS: "SEARCH_MORE_PLAYLISTS",
     STATUS: "STATUS",
-    GET_STARTED: "GET_STARTED"
+    GET_STARTED: "GET_STARTED",
+    VIEW_TRACKS: "VIEW_TRACKS",
+    SET_PLAYLIST: "SET_PLAYLIST"
 }
 
 class Messenger {
@@ -20,10 +23,36 @@ class Messenger {
         if (event.message.quick_reply != null) {
             return this.receivedPostback({ sender: event.sender, postback: event.message.quick_reply });
         }
-        else if( typeof event.message.text == 'undefined' || event.message.text.toLowerCase() === 'status'
-                || event.message.text.toLowerCase().replace("'", '')
-                    .replace('’', '').startsWith('whats playing')) {
+        else if (typeof event.message.text == 'undefined' || event.message.text.toLowerCase() === 'status'
+            || event.message.text.toLowerCase().replace("'", '')
+                .replace('’', '').startsWith('whats playing')) {
             this.getStatus(event.sender.id);
+        }
+        else if (event.message.text.startsWith(':')) {
+            const command = event.message.text.toLowerCase().substr(1)
+                .split(/\s+/)
+                .filter(text => text.length);
+            if (command.length) {
+                switch (command[0]) {
+                    case 'volume':
+                        this.postVolume(event.sender.id, command.length == 1 ? null : command[1]);
+                        break;
+                    case 'skip':
+                        this.skipTrack(event.sender.id);
+                        break;
+                    case 'play':
+                        this.resumePlayback(event.sender.id);
+                        break;
+                    case 'pause':
+                        this.pausePlayback(event.sender.id);
+                        break;
+                    default:
+                        this.sendMessage(event.sender.id, {text: "Unrecognized command: " + command[0]});
+                }
+            }
+        }
+        else if (event.message.text.toLowerCase().startsWith('%')) {
+            this.searchPlaylists(event.sender.id, event.message.text.substr(1));
         }
         else {
             this.searchMusic(event.sender.id, event.message.text);
@@ -62,6 +91,20 @@ class Messenger {
                 this.searchMusic(event.sender.id, payload.terms, payload.skip, payload.limit);
                 break;
             }
+            case Commands.SEARCH_MORE_PLAYLISTS: {
+                // Show tracks within the selected playlist
+                this.searchPlaylists(event.sender.id, payload.terms, payload.skip, payload.limit);
+                break;
+            }
+            case Commands.VIEW_TRACKS: {
+                // Show tracks within the selected playlist
+                this.getPlaylistTracks(event.sender.id, payload.playlist, payload.skip, payload.limit);
+                break;
+            }
+            case Commands.SET_PLAYLIST: {
+                this.sendMessage(event.sender.id, {text: "Not yet implemented."});
+                break;
+            }
             case Commands.STATUS: {
                 this.getStatus(event.sender.id);
                 break;
@@ -71,7 +114,7 @@ class Messenger {
 
     async searchMusic(sender, terms, skip = 0, limit = 10) {
         // Begin a 'typing' indicator to show that we're working on a response
-        this.sendTypingIndicator(sender, true);
+        await this.sendTypingIndicator(sender, true);
 
         // We want to pull results from Spotify 'paginated' in batches of $limit.
         await spotify.searchTracks(terms, skip, limit)
@@ -120,7 +163,7 @@ class Messenger {
                         return {
                             title: track.name,
                             subtitle: this.generateArtistList(track),
-                            buttons: [this.generatePostbackButton("Add", { command: Commands.ADD_TRACK, track: track.id })],
+                            buttons: this.generateTrackViewButtons(track),
                             image_url: track.album.images.length > 0 ? track.album.images[0].url : ""
                         };
                     });
@@ -135,11 +178,148 @@ class Messenger {
             });
 
         // Cancel the 'typing' indicator
-        this.sendTypingIndicator(sender, false);
+        await this.sendTypingIndicator(sender, false);
+    }
+
+    async searchPlaylists(sender, terms, skip = 0, limit = 10) {
+        // Begin a 'typing' indicator to show that we're working on a response
+        await this.sendTypingIndicator(sender, true);
+
+        // We want to pull results from Spotify 'paginated' in batches of $limit.
+        await spotify.searchPlaylists(terms, skip, limit)
+            .then( result => {
+                if (result.items.length === 0) {
+                    this.sendMessage(sender, { text: "Sorry, we couldn't find that." });
+                }
+                else if (result.items.length > 0) {
+                    // If there are enough remaining results, we can give the user
+                    // a 'More' button to pull further results
+                    const remainingResults = result.total - limit - skip;
+                    const showMoreButton = (remainingResults > 0);
+
+                    const message = {
+                        attachment: {
+                            type: "template",
+                            payload: {
+                                template_type: "generic",
+                                elements: [],
+                            }
+                        }
+                    };
+
+                    // Add the more button if there were enough results. We provide the button
+                    // with all of the data it needs to be able to call this search function again and
+                    // get the next batch of results
+                    if (showMoreButton) {
+                        message.quick_replies = [{
+                            content_type: "text",
+                            title: "More Results",
+                            payload: JSON.stringify({
+                                command: Commands.SEARCH_MORE_PLAYLISTS,
+                                terms: terms,
+                                skip: skip + limit,
+                                limit: limit
+                            })
+                        }];
+                    }
+
+                    // Build a list of buttons for each result track
+                    message.attachment.payload.elements = result.items.map((playlist) => {
+                        this.sortImagesArtwork(playlist);
+                        return {
+                            title: playlist.name,
+                            subtitle: playlist.description,
+                            buttons: [
+                                this.generatePostbackButton("View Tracks", { command: Commands.VIEW_TRACKS, playlist: playlist.id }),
+                                this.generatePostbackButton("Set Playlist", { command: Commands.SET_PLAYLIST, playlist: playlist.id })],
+                            image_url: playlist.images.length > 0 ? playlist.images[0].url : ""
+                        };
+                    });
+
+                    // Send the finished result to the user
+                    this.sendMessage(sender, message);
+                }
+            })
+            .catch( err => {
+                this.consoleError("Error searching for " + terms + ": " + err);
+                this.sendMessage(sender, { text: "Oops.. Computer says no. Maybe try again later." });
+            });
+
+        // Cancel the 'typing' indicator
+        await this.sendTypingIndicator(sender, false);
+    }
+
+    async getPlaylistTracks(sender, playlistId, skip = 0, limit = 10) {
+        // Begin a 'typing' indicator to show that we're working on a response
+        await this.sendTypingIndicator(sender, true);
+
+        // We want to pull results from Spotify 'paginated' in batches of $limit.
+        await spotify.getPlaylistTracks(playlistId, skip, limit)
+            .then( result => {
+                if (result.items.length === 0) {
+                    this.sendMessage(sender, { text: "Sorry, unable to load playlist." });
+                }
+                else if (result.items.length > 0) {
+                    // If there are enough remaining results, we can give the user
+                    // a 'More' button to pull further results
+                    const remainingResults = result.total - limit - skip;
+                    const showMoreButton = (remainingResults > 0);
+
+                    const message = {
+                        attachment: {
+                            type: "template",
+                            payload: {
+                                template_type: "generic",
+                                elements: [],
+                            }
+                        }
+                    };
+
+                    // Add the more button if there were enough results. We provide the button
+                    // with all of the data it needs to be able to call this search function again and
+                    // get the next batch of results
+                    if (showMoreButton) {
+                        message.quick_replies = [{
+                            content_type: "text",
+                            title: "View More Tracks",
+                            payload: JSON.stringify({
+                                command: Commands.VIEW_TRACKS,
+                                playlist: playlistId,
+                                skip: skip + limit,
+                                limit: limit
+                            })
+                        }];
+                    }
+
+                    // Build a list of buttons for each result track
+                    message.attachment.payload.elements = result.items
+                        .filter(item => item.track)
+                        .map(item => item.track)
+                        .map(track => {
+                            this.sortTrackArtwork(track);
+                            return {
+                                title: track.name,
+                                subtitle: this.generateArtistList(track),
+                                buttons: this.generateTrackViewButtons(track),
+                                image_url: track.album.images.length > 0 ? track.album.images[0].url : ""
+                            };
+                        });
+
+                    // Send the finished result to the user
+                    this.sendMessage(sender, message);
+                }
+            })
+            .catch( err => {
+                this.consoleError("Error viewing playlist tracks: " + err);
+                this.sendMessage(sender, { text: "Oops.. Computer says no. Maybe try again later." });
+            });
+
+        // Cancel the 'typing' indicator
+        await this.sendTypingIndicator(sender, false);
     }
 
     async getStatus(sender) {
-        this.sendTypingIndicator(sender, true);
+        await this.sendTypingIndicator(sender, true);
         await spotify.getStatus()
             .then( status => {
                 let message = "";
@@ -161,7 +341,58 @@ class Messenger {
                 this.consoleError( error );
                 this.sendMessage(sender, { text: "Oops.. Computer says no. Maybe try again later." });
             });
-        this.sendTypingIndicator(sender, false);
+        await this.sendTypingIndicator(sender, false);
+    }
+
+    async postVolume(sender, volume) {
+        await this.sendTypingIndicator(sender, true);
+        if(!volume || !volume.trim()) {
+            await spotify.getVolume()
+                .then( resp => this.sendMessage(sender, {text: "Volume: " + resp}))
+                .catch(error => {
+                    this.consoleError(JSON.stringify(error));
+                    this.sendMessage(sender, {text: "Unable to get volume: " + error.message});
+                });
+        }
+        else {
+            await spotify.setVolume(volume)
+                .then(resp => {
+                    this.consoleInfo("Volume response: " + JSON.stringify(resp));
+                    this.sendMessage(sender, {text: "Volume set."});
+                })
+                .catch(error => {
+                    this.consoleError(JSON.stringify(error));
+                    this.sendMessage(sender, {text: "Unable to set volume: " + error.message});
+                });
+        }
+        await this.sendTypingIndicator(sender, false);
+    }
+
+    async skipTrack(sender) {
+        await spotify.skipTrack()
+            .then(() => this.sendMessage(sender, {text: "As you wish master."}))
+            .catch(error => {
+                this.consoleError(JSON.stringify(error));
+                this.sendMessage(sender, {text: "Unable to skip track: " + error.message});
+            });
+    }
+
+    async pausePlayback(sender) {
+        await spotify.pausePlayback()
+            .then(() => this.sendMessage(sender, {text: "As you wish master."}))
+            .catch(error => {
+                this.consoleError(JSON.stringify(error));
+                this.sendMessage(sender, {text: "Unable to pause playback: " + error.message});
+            });
+    }
+
+    async resumePlayback(sender) {
+        await spotify.resumePlayback()
+            .then(() => this.sendMessage(sender, {text: "As you wish master."}))
+            .catch(error => {
+                this.consoleError(JSON.stringify(error));
+                this.sendMessage(sender, {text: "Unable to resume playback: " + error.message});
+            });
     }
 
     generatePostbackButton(title, payload) {
@@ -170,6 +401,23 @@ class Messenger {
             title: title,
             payload: JSON.stringify(payload)
         };
+    }
+
+    generatePreviewLink(title, url) {
+        return {
+            type: "web_url",
+            title: title,
+            url: url
+        };
+    }
+
+    generateTrackViewButtons(track) {
+        const buttons = [];
+        if (track.preview_url) {
+            buttons.push(this.generatePreviewLink("Listen to Sample", track.preview_url));
+        }
+        buttons.push(this.generatePostbackButton("Queue Track", {command: Commands.ADD_TRACK, track: track.id}));
+        return buttons;
     }
 
     generateArtistList(track) {
@@ -185,6 +433,13 @@ class Messenger {
     sortTrackArtwork(track) {
         // Sort the album images by size order ascending
         track.album.images.sort((a, b) => {
+            return b.width - a.width;
+        });
+    }
+
+    sortImagesArtwork(item) {
+        // Sort the images by size order ascending
+        item.images.sort((a, b) => {
             return b.width - a.width;
         });
     }

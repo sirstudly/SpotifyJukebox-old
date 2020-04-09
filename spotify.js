@@ -171,6 +171,26 @@ class Spotify {
         });
     }
 
+    async searchPlaylists(terms, skip = 0, limit = 10) {
+        if (!this.isAuthTokenValid()) {
+            await this.refreshAuthToken();
+        }
+        return this.runTask(async () => {
+            const result = await this.api.searchPlaylists(terms, {offset: skip, limit: limit});
+            return result.body.playlists;
+        });
+    }
+
+    async getPlaylistTracks(playlistId, skip = 0, limit = 10) {
+        if (!this.isAuthTokenValid()) {
+            await this.refreshAuthToken();
+        }
+        return this.runTask(async () => {
+            const result = await this.api.getPlaylistTracks(playlistId, {offset: skip, limit: limit});
+            return result.body;
+        });
+    }
+
     async getMyDevices() {
         if (!this.isAuthTokenValid()) {
             await this.refreshAuthToken();
@@ -189,7 +209,29 @@ class Spotify {
         if (!this.isAuthTokenValid()) {
             await this.refreshAuthToken();
         }
-        return await this.api.getMyCurrentPlaybackState();
+        return await this.runTask(() => {
+            return this.api.getMyCurrentPlaybackState();
+        });
+    }
+
+    async getVolume() {
+        const playbackState = await this.getPlaybackState();
+        return playbackState.body.device.volume_percent;
+    }
+
+    async setVolume(volume) {
+        if (!this.isAuthTokenValid()) {
+            await this.refreshAuthToken();
+        }
+        if (volume.trim().match(/^1?\d{0,2}$/)) {
+            const v = parseInt(volume, 10);
+            if (typeof v == 'number' && v <= 100) {
+                return await this.runTask(() => {
+                    return this.api.setVolume(v);
+                });
+            }
+        }
+        throw new Error("Volume can only be set to a whole number between 0 and 100.");
     }
 
     async queueTrack(trackId) {
@@ -199,6 +241,33 @@ class Spotify {
         return this.runTask(async () => {
             const result = await this.api.addTrackToQueue(trackId);
             this.consoleInfo("Queued track response: " + JSON.stringify(result));
+        });
+    }
+
+    async skipTrack() {
+        if (!this.isAuthTokenValid()) {
+            await this.refreshAuthToken();
+        }
+        return await this.runTask(() => {
+            return this.api.skipToNext();
+        });
+    }
+
+    async pausePlayback() {
+        if (!this.isAuthTokenValid()) {
+            await this.refreshAuthToken();
+        }
+        return await this.runTask(() => {
+            return this.api.pause();
+        });
+    }
+
+    async resumePlayback() {
+        if (!this.isAuthTokenValid()) {
+            await this.refreshAuthToken();
+        }
+        return await this.runTask(() => {
+            return this.api.play();
         });
     }
 
