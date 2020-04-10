@@ -102,7 +102,7 @@ class Messenger {
                 break;
             }
             case Commands.SET_PLAYLIST: {
-                this.sendMessage(event.sender.id, {text: "Not yet implemented."});
+                this.setPlaylist(event.sender.id, payload.playlist);
                 break;
             }
             case Commands.STATUS: {
@@ -392,6 +392,15 @@ class Messenger {
             .catch(error => {
                 this.consoleError(JSON.stringify(error));
                 this.sendMessage(sender, {text: "Unable to resume playback: " + error.message});
+            });
+    }
+
+    async setPlaylist(sender, playlistId) {
+        await spotify.setPlaylist(playlistId)
+            .then(() => this.sendMessage(sender, {text: "You da boss."}))
+            .catch(error => {
+                this.consoleError(JSON.stringify(error));
+                this.sendMessage(sender, {text: "Oopsie, unable to set playlist: " + error.message});
             });
     }
 

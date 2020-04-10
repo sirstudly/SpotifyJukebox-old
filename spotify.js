@@ -271,6 +271,15 @@ class Spotify {
         });
     }
 
+    async setPlaylist(playlistId) {
+        if (!this.isAuthTokenValid()) {
+            await this.refreshAuthToken();
+        }
+        return await this.runTask(() => {
+            return this.api.play({context_uri: "spotify:playlist:" + playlistId});
+        });
+    }
+
     getStatus() {
         return this.webqueue(() => this._getStatus());
     }
