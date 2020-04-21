@@ -346,7 +346,9 @@ class Spotify {
             if (ps.body && ps.body.context) {
                 if (ps.body.context.type == "playlist") {
                     const playlist = await this.runTask(() => {
-                        return this.api.getPlaylist(ps.body.context.uri.substr("spotify:playlist:".length), {fields: "name,description"});
+                        return this.api.getPlaylist(
+                            ps.body.context.uri.substr(ps.body.context.uri.lastIndexOf(":") + 1),
+                            {fields: "name,description"});
                     });
                     return {
                         type : "playlist",
@@ -355,7 +357,7 @@ class Spotify {
                 }
                 if (ps.body.context.type == "album") {
                     const album = await this.runTask(() => {
-                        return this.api.getAlbum(ps.body.context.uri.substr("spotify:album:".length));
+                        return this.api.getAlbum(ps.body.context.uri.substr(ps.body.context.uri.lastIndexOf(":") + 1));
                     });
                     return {
                         type : "album",

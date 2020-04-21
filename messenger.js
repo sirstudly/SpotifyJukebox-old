@@ -193,8 +193,12 @@ class Messenger {
                     // remove link metadata if present
                     let searchTerm = terms
                         .replace("https://open.spotify.com/playlist/", "")
-                        .replace("spotify:playlist:", "");
-                    if (searchTerm.indexOf("?") >= 0) {
+                        .replace("https://api.spotify.com/v1/playlists/", "");
+
+                    if (searchTerm.indexOf(":")) { // could be spotify:playlist or spotify:user:playlist
+                        searchTerm = searchTerm.substr(searchTerm.lastIndexOf(":") + 1);
+                    }
+                    else if (searchTerm.indexOf("?") >= 0) { // remove params if URI provided
                         searchTerm = searchTerm.substr(0, searchTerm.indexOf("?"));
                     }
                     await spotify.getPlaylist(searchTerm.trim())
