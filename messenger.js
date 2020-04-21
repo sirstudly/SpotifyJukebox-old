@@ -187,11 +187,25 @@ class Messenger {
 
         // We want to pull results from Spotify 'paginated' in batches of $limit.
         await spotify.searchPlaylists(terms, skip, limit)
-            .then( result => {
+            .then(async (result) => {
                 if (result.items.length === 0) {
-                    this.sendMessage(sender, { text: "Sorry, we couldn't find that." });
+                    // see if it's a playlist id and assign it if it is
+                    // remove link metadata if present
+                    let searchTerm = terms
+                        .replace("https://open.spotify.com/playlist/", "")
+                        .replace("spotify:playlist:", "");
+                    if (searchTerm.indexOf("?") >= 0) {
+                        searchTerm = searchTerm.substr(0, searchTerm.indexOf("?"));
+                    }
+                    await spotify.getPlaylist(searchTerm.trim())
+                        .then(ps => result.items = [ps])
+                        .catch(err => {
+                            this.consoleInfo("Unable to find playlist: " + terms);
+                            this.sendMessage(sender, {text: "Sorry, we couldn't find that. " +
+                                    "If you have a Spotify playlist link, just paste it after the %"});
+                        })
                 }
-                else if (result.items.length > 0) {
+                if (result.items.length > 0) {
                     // If there are enough remaining results, we can give the user
                     // a 'More' button to pull further results
                     const remainingResults = result.total - limit - skip;

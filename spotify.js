@@ -193,6 +193,16 @@ class Spotify {
         });
     }
 
+    async getPlaylist(playlistId) {
+        if (!this.isAuthTokenValid()) {
+            await this.refreshAuthToken();
+        }
+        return this.runTask(async () => {
+            const result = await this.api.getPlaylist(playlistId);
+            return result.body;
+        });
+    }
+
     async getMyDevices() {
         if (!this.isAuthTokenValid()) {
             await this.refreshAuthToken();
