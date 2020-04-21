@@ -74,6 +74,11 @@ class Spotify {
         const authorizeUrl = this.api.createAuthorizeURL(scopes, "default-state");
         this.consoleInfo(`Authorization required. Going to ${authorizeUrl}`);
 
+        this.loginToSpotifyWeb(authorizeUrl)
+            .catch(e => this.consoleError("Error initializing Spotify web: " + JSON.stringify(e)));
+    }
+
+    async loginToSpotifyWeb(authorizeUrl) {
         await this.driver.get(authorizeUrl);
         await this.driver.findElements(By.id("auth-accept")).then( e => {
             for( const elem of e ) {
@@ -131,9 +136,6 @@ class Spotify {
         this.api.setAccessToken(this.auth.access_token);
         this.api.setRefreshToken(this.auth.refresh_token);
         this.consoleInfo("Access Token: " + this.auth.access_token);
-
-        // Perform other start-up tasks, now that we have access to the api
-        await this.initialized();
     }
 
     updateMessengerCallback() {
@@ -215,7 +217,9 @@ class Spotify {
     }
 
     async getVolume() {
-        const playbackState = await this.getPlaybackState();
+        const playbackState = await this.runTask(() => {
+            return this.getPlaybackState();
+        });
         return playbackState.body.device.volume_percent;
     }
 
@@ -302,7 +306,8 @@ class Spotify {
         const nextInQueue = await this._listTracks("Next in Queue");
         return {
             now_playing: nowPlaying.length == 0 ? null : nowPlaying[0],
-            queued_tracks: nextInQueue
+            queued_tracks: nextInQueue,
+            context: await this._currentContext()
         };
     }
 
@@ -323,6 +328,36 @@ class Spotify {
             tracks.push(nextTrack);
         }
         return tracks;
+    }
+
+    // returns the currently playing context (e.g. album, track, playlist...)
+    async _currentContext() {
+        return await this.getPlaybackState().then(async (ps) => {
+            if (ps.body && ps.body.context) {
+                if (ps.body.context.type == "playlist") {
+                    const playlist = await this.runTask(() => {
+                        return this.api.getPlaylist(ps.body.context.uri.substr("spotify:playlist:".length), {fields: "name,description"});
+                    });
+                    return {
+                        type : "playlist",
+                        name : playlist.body.name
+                    };
+                }
+                if (ps.body.context.type == "album") {
+                    const album = await this.runTask(() => {
+                        return this.api.getAlbum(ps.body.context.uri.substr("spotify:album:".length));
+                    });
+                    return {
+                        type : "album",
+                        name : album.body.name,
+                        artists: album.body.artists.map(a => a.name).join(", ")
+                    };
+                }
+            }
+        }).catch(e => {
+            this.consoleError("Error attempting to retrieve playback state. " + e);
+            return null;
+        });
     }
 
     async verifyLoggedIn() {

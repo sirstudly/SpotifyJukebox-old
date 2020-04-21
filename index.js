@@ -69,6 +69,10 @@ app.get("/spotify", (req, res) => {
     spotify.receivedAuthCode(req.query.code)
         .then( () => { res.status(200).send(); })
         .catch( err => { res.status(500).send(JSON.stringify(err)); } );
+
+    // Perform other start-up tasks, now that we have access to the api
+    spotify.initialized()
+        .catch(err => console.error("Error during initialization: " + JSON.stringify(err)));
 });
 
 app.get("/search", async (req, res) => {

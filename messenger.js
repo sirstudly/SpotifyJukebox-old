@@ -333,7 +333,15 @@ class Messenger {
                         message += i + ": " + track.song_title + " by " + track.artist + "\n";
                     }
                 } else {
-                    message += "There are no queued tracks.";
+                    message += "There are no queued tracks.\n";
+                }
+                if (status.context) {
+                    if(status.context.type == "playlist") {
+                        message += "Current playlist: " + status.context.name;
+                    }
+                    else if(status.context.type == "album") {
+                        message += "Current album: " + status.context.name + " by " + status.context.artists;
+                    }
                 }
                 this.sendMessage(sender, {text: message.trim()});
             })
