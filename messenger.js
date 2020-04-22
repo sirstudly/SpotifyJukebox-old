@@ -185,9 +185,12 @@ class Messenger {
         // Begin a 'typing' indicator to show that we're working on a response
         await this.sendTypingIndicator(sender, true);
 
-        // We want to pull results from Spotify 'paginated' in batches of $limit.
-        await spotify.searchPlaylists(terms, skip, limit)
-            .then(async (result) => {
+        if(terms.trim().length === 0) {
+            await this.sendMessage(sender, {text: "You haven't specified any search criteria. If you have a Spotify playlist link, just paste it after the %"});
+        }
+        else {
+            // We want to pull results from Spotify 'paginated' in batches of $limit.
+            await spotify.searchPlaylists(terms, skip, limit).then(async (result) => {
                 if (result.items.length === 0) {
                     // see if it's a playlist id and assign it if it is
                     // remove link metadata if present
@@ -205,8 +208,10 @@ class Messenger {
                         .then(ps => result.items = [ps])
                         .catch(err => {
                             this.consoleInfo("Unable to find playlist: " + terms);
-                            this.sendMessage(sender, {text: "Sorry, we couldn't find that. " +
-                                    "If you have a Spotify playlist link, just paste it after the %"});
+                            this.sendMessage(sender, {
+                                text: "Sorry, we couldn't find that. " +
+                                    "If you have a Spotify playlist link, just paste it after the %"
+                            });
                         })
                 }
                 if (result.items.length > 0) {
@@ -248,20 +253,26 @@ class Messenger {
                             title: playlist.name,
                             subtitle: playlist.description,
                             buttons: [
-                                this.generatePostbackButton("View Tracks", { command: Commands.VIEW_TRACKS, playlist: playlist.id }),
-                                this.generatePostbackButton("Set Playlist", { command: Commands.SET_PLAYLIST, playlist: playlist.id })],
+                                this.generatePostbackButton("View Tracks", {
+                                    command: Commands.VIEW_TRACKS,
+                                    playlist: playlist.id
+                                }),
+                                this.generatePostbackButton("Set Playlist", {
+                                    command: Commands.SET_PLAYLIST,
+                                    playlist: playlist.id
+                                })],
                             image_url: playlist.images.length > 0 ? playlist.images[0].url : ""
                         };
                     });
 
                     // Send the finished result to the user
-                    this.sendMessage(sender, message);
+                    await this.sendMessage(sender, message);
                 }
-            })
-            .catch( err => {
-                this.consoleError("Error searching for " + terms + ": " + err);
-                this.sendMessage(sender, { text: "Oops.. Computer says no. Maybe try again later." });
+            }).catch(err => {
+                    this.consoleError("Error searching for " + terms + ": " + err);
+                    this.sendMessage(sender, {text: "Oops.. Computer says no. Maybe try again later."});
             });
+        }
 
         // Cancel the 'typing' indicator
         await this.sendTypingIndicator(sender, false);
