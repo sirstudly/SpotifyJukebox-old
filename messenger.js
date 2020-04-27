@@ -52,7 +52,7 @@ class Messenger {
             }
         }
         else if (event.message.text.toLowerCase().startsWith('%')) {
-            this.searchPlaylists(event.sender.id, event.message.text.substr(1));
+            this.searchOther(event.sender.id, event.message.text.substr(1));
         }
         else {
             this.searchMusic(event.sender.id, event.message.text);
@@ -93,7 +93,7 @@ class Messenger {
             }
             case Commands.SEARCH_MORE_PLAYLISTS: {
                 // Show tracks within the selected playlist
-                this.searchPlaylists(event.sender.id, payload.terms, payload.skip, payload.limit);
+                this.searchOther(event.sender.id, payload.terms, payload.skip, payload.limit);
                 break;
             }
             case Commands.VIEW_TRACKS: {
@@ -181,7 +181,7 @@ class Messenger {
         await this.sendTypingIndicator(sender, false);
     }
 
-    async searchPlaylists(sender, terms, skip = 0, limit = 10) {
+    async searchOther(sender, terms, skip, limit) {
         // Begin a 'typing' indicator to show that we're working on a response
         await this.sendTypingIndicator(sender, true);
 
@@ -190,83 +190,27 @@ class Messenger {
         }
         else {
             // We want to pull results from Spotify 'paginated' in batches of $limit.
-            await spotify.searchPlaylists(terms, skip, limit).then(async (result) => {
-                if (result.items.length === 0) {
-                    // see if it's a playlist id and assign it if it is
-                    // remove link metadata if present
-                    let searchTerm = terms
-                        .replace("https://open.spotify.com/playlist/", "")
-                        .replace("https://api.spotify.com/v1/playlists/", "");
+            await spotify.search(terms, ['album', 'artist', 'playlist'], skip, limit).then(async (result) => {
+                if (result.albums.total + result.artists.total + result.playlists.total === 0 ) {
 
-                    if (searchTerm.indexOf(":")) { // could be spotify:playlist or spotify:user:playlist
-                        searchTerm = searchTerm.substr(searchTerm.lastIndexOf(":") + 1);
+                    // see if we received a URL, retrieve type and id (remove any extra params)
+                    // it could also be a spotify URI, eg. spotify:playlist or spotify:user:playlist
+                    const runMatches = (searchTerm) => {
+                        const regexMatch = searchTerm.match(/^.*spotify\.com\/(.*)\/(.*?)(\?.*)?$/);
+                        return regexMatch ? regexMatch : searchTerm.match(/^.*:(.*):(.*)$/);
                     }
-                    else if (searchTerm.indexOf("?") >= 0) { // remove params if URI provided
-                        searchTerm = searchTerm.substr(0, searchTerm.indexOf("?"));
-                    }
-                    await spotify.getPlaylist(searchTerm.trim())
-                        .then(ps => result.items = [ps])
-                        .catch(err => {
-                            this.consoleInfo("Unable to find playlist: " + terms);
-                            this.sendMessage(sender, {
-                                text: "Sorry, we couldn't find that. " +
-                                    "If you have a Spotify playlist link, just paste it after the %"
-                            });
-                        })
-                }
-                if (result.items.length > 0) {
-                    // If there are enough remaining results, we can give the user
-                    // a 'More' button to pull further results
-                    const remainingResults = result.total - limit - skip;
-                    const showMoreButton = (remainingResults > 0);
-
-                    const message = {
-                        attachment: {
-                            type: "template",
-                            payload: {
-                                template_type: "generic",
-                                elements: [],
-                            }
+                    const matches = runMatches(terms);
+                    if(matches && matches.length) {
+                        if(matches[1] == 'playlist') {
+                            await spotify.getPlaylist(matches[2])
+                                .then(ps => this.collatePlaylistResults({items: [ps], total: 1}))
+                                .then(message => this.sendMessage(sender, message));
                         }
-                    };
-
-                    // Add the more button if there were enough results. We provide the button
-                    // with all of the data it needs to be able to call this search function again and
-                    // get the next batch of results
-                    if (showMoreButton) {
-                        message.quick_replies = [{
-                            content_type: "text",
-                            title: "More Results",
-                            payload: JSON.stringify({
-                                command: Commands.SEARCH_MORE_PLAYLISTS,
-                                terms: terms,
-                                skip: skip + limit,
-                                limit: limit
-                            })
-                        }];
                     }
-
-                    // Build a list of buttons for each result track
-                    message.attachment.payload.elements = result.items.map((playlist) => {
-                        this.sortImagesArtwork(playlist);
-                        return {
-                            title: playlist.name,
-                            subtitle: playlist.description,
-                            buttons: [
-                                this.generatePostbackButton("View Tracks", {
-                                    command: Commands.VIEW_TRACKS,
-                                    playlist: playlist.id
-                                }),
-                                this.generatePostbackButton("Set Playlist", {
-                                    command: Commands.SET_PLAYLIST,
-                                    playlist: playlist.id
-                                })],
-                            image_url: playlist.images.length > 0 ? playlist.images[0].url : ""
-                        };
-                    });
-
-                    // Send the finished result to the user
-                    await this.sendMessage(sender, message);
+                }
+                if (result.playlists.total > 0) {
+                    await this.collatePlaylistResults(result.playlists, terms, skip, limit)
+                        .then(message => this.sendMessage(sender, message));
                 }
             }).catch(err => {
                     this.consoleError("Error searching for " + terms + ": " + err);
@@ -276,6 +220,72 @@ class Messenger {
 
         // Cancel the 'typing' indicator
         await this.sendTypingIndicator(sender, false);
+    }
+
+    /**
+     * Takes the (playlist) search result and builds a message object to be sent back to messenger.
+     *
+     * @param result search result array (non-null)
+     * @param terms search terms
+     * @param skip
+     * @param limit
+     * @returns {Promise<{attachment: {payload: {elements: [], template_type: string}, type: string}}>}
+     */
+    async collatePlaylistResults(result, terms = null, skip = 0, limit = 10) {
+
+        if (result.items.length > 0) {
+            // If there are enough remaining results, we can give the user
+            // a 'More' button to pull further results
+            const remainingResults = result.total - limit - skip;
+            const showMoreButton = (remainingResults > 0);
+
+            const message = {
+                attachment: {
+                    type: "template",
+                    payload: {
+                        template_type: "generic",
+                        elements: [],
+                    }
+                }
+            };
+
+            // Add the more button if there were enough results. We provide the button
+            // with all of the data it needs to be able to call this search function again and
+            // get the next batch of results
+            if (showMoreButton) {
+                message.quick_replies = [{
+                    content_type: "text",
+                    title: "More Results",
+                    payload: JSON.stringify({
+                        command: Commands.SEARCH_MORE_PLAYLISTS,
+                        terms: terms,
+                        skip: skip + limit,
+                        limit: limit
+                    })
+                }];
+            }
+
+            // Build a list of buttons for each result track
+            message.attachment.payload.elements = result.items.map((playlist) => {
+                this.sortImagesArtwork(playlist);
+                return {
+                    title: playlist.name,
+                    subtitle: playlist.description,
+                    buttons: [
+                        this.generatePostbackButton("View Tracks", {
+                            command: Commands.VIEW_TRACKS,
+                            playlist: playlist.id
+                        }),
+                        this.generatePostbackButton("Set Playlist", {
+                            command: Commands.SET_PLAYLIST,
+                            playlist: playlist.id
+                        })],
+                    image_url: playlist.images.length > 0 ? playlist.images[0].url : ""
+                };
+            });
+            return message;
+        }
+        throw Error("No playlist results found."); // shouldn't ever get here
     }
 
     async getPlaylistTracks(sender, playlistId, skip = 0, limit = 10) {

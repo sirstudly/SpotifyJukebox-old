@@ -82,6 +82,13 @@ app.get("/search", async (req, res) => {
         .catch( err => { res.status(500).send(JSON.stringify(err)); } );
 });
 
+app.get("/search-other", async (req, res) => {
+    res.set('Content-Type', 'application/json');
+    spotify.search(req.query.terms, ['album', 'artist', 'playlist'], 0, 20)
+        .then( result => { res.status(200).send(JSON.stringify(result)); })
+        .catch( err => { res.status(500).send(JSON.stringify(err)); } );
+});
+
 app.get("/get-queue", async (req, res) => {
     res.set('Content-Type', 'application/json');
     spotify.getStatus()

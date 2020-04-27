@@ -173,13 +173,13 @@ class Spotify {
         });
     }
 
-    async searchPlaylists(terms, skip = 0, limit = 10) {
+    async search(terms, types, skip = 0, limit = 10) {
         if (!this.isAuthTokenValid()) {
             await this.refreshAuthToken();
         }
         return this.runTask(async () => {
-            const result = await this.api.searchPlaylists(terms, {offset: skip, limit: limit});
-            return result.body.playlists;
+            const result = await this.api.search(terms, types, {offset: skip, limit: limit});
+            return result.body;
         });
     }
 
