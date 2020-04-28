@@ -193,12 +193,52 @@ class Spotify {
         });
     }
 
+    async getAlbumTracks(albumId, skip = 0, limit = 10) {
+        if (!this.isAuthTokenValid()) {
+            await this.refreshAuthToken();
+        }
+        return this.runTask(async () => {
+            const result = await this.api.getAlbum(albumId, {offset: skip, limit: limit});
+            return result.body;
+        });
+    }
+
     async getPlaylist(playlistId) {
         if (!this.isAuthTokenValid()) {
             await this.refreshAuthToken();
         }
         return this.runTask(async () => {
             const result = await this.api.getPlaylist(playlistId);
+            return result.body;
+        });
+    }
+
+    async getAlbum(albumId) {
+        if (!this.isAuthTokenValid()) {
+            await this.refreshAuthToken();
+        }
+        return this.runTask(async () => {
+            const result = await this.api.getAlbum(albumId);
+            return result.body;
+        });
+    }
+
+    async getArtist(artistId) {
+        if (!this.isAuthTokenValid()) {
+            await this.refreshAuthToken();
+        }
+        return this.runTask(async () => {
+            const result = await this.api.getArtist(artistId);
+            return result.body;
+        });
+    }
+
+    async getArtistAlbums(artistId, skip = 0, limit = 10) {
+        if (!this.isAuthTokenValid()) {
+            await this.refreshAuthToken();
+        }
+        return this.runTask(async () => {
+            const result = await this.api.getArtistAlbums(artistId, {offset: skip, limit: limit});
             return result.body;
         });
     }
@@ -230,7 +270,10 @@ class Spotify {
         const playbackState = await this.runTask(() => {
             return this.getPlaybackState();
         });
-        return playbackState.body.device.volume_percent;
+        if (playbackState.body.device) {
+            return playbackState.body.device.volume_percent;
+        }
+        throw Error("No playback device found.");
     }
 
     async setVolume(volume) {
@@ -285,12 +328,12 @@ class Spotify {
         });
     }
 
-    async setPlaylist(playlistId) {
+    async play(uri) {
         if (!this.isAuthTokenValid()) {
             await this.refreshAuthToken();
         }
         return await this.runTask(() => {
-            return this.api.play({context_uri: "spotify:playlist:" + playlistId});
+            return this.api.play({context_uri: uri});
         });
     }
 
