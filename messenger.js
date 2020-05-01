@@ -57,7 +57,36 @@ class Messenger {
             }
         }
         else if (event.message.text.toLowerCase().startsWith('%')) {
-            this.showSearchSelectButtons(event.sender.id, event.message.text.substr(1));
+            // see if we received a URL, retrieve type and id (remove any extra params)
+            // it could also be a spotify URI, eg. spotify:playlist or spotify:user:playlist
+            const runMatches = (searchTerm) => {
+                const regexMatch = searchTerm.match(/^.*spotify\.com\/(.*)\/(.*?)(\?.*)?$/);
+                return regexMatch ? regexMatch : searchTerm.match(/^.*:(.*):(.*)$/);
+            }
+            const matches = runMatches(event.message.text.substr(1));
+            if(matches && matches.length) {
+                if(matches[1] == 'playlist') {
+                    spotify.getPlaylist(matches[2])
+                        .then(ps => this.collatePlaylistResults({items: [ps], total: 1}))
+                        .then(message => this.sendMessage(event.sender.id, message));
+                }
+                else if(matches[1] == 'album') {
+                    spotify.getAlbum(matches[2])
+                        .then(ps => this.collateAlbumResults({items: [ps], total: 1}))
+                        .then(message => this.sendMessage(event.sender.id, message));
+                }
+                else if(matches[1] == 'artist') {
+                    spotify.getArtist(matches[2])
+                        .then(ps => this.collateArtistResults({items: [ps], total: 1}))
+                        .then(message => this.sendMessage(event.sender.id, message));
+                }
+                else {
+                    this.showSearchSelectButtons(event.sender.id, event.message.text.substr(1));
+                }
+            }
+            else {
+                this.showSearchSelectButtons(event.sender.id, event.message.text.substr(1));
+            }
         }
         else {
             this.searchMusic(event.sender.id, event.message.text);
@@ -262,57 +291,31 @@ class Messenger {
             await this.sendMessage(sender, {text: "You haven't specified any search criteria. If you have a Spotify playlist link, just paste it after the %"});
         }
         else {
-            // see if we received a URL, retrieve type and id (remove any extra params)
-            // it could also be a spotify URI, eg. spotify:playlist or spotify:user:playlist
-            const runMatches = (searchTerm) => {
-                const regexMatch = searchTerm.match(/^.*spotify\.com\/(.*)\/(.*?)(\?.*)?$/);
-                return regexMatch ? regexMatch : searchTerm.match(/^.*:(.*):(.*)$/);
-            }
-            const matches = runMatches(terms);
-            if(matches && matches.length) {
-                if(matches[1] == 'playlist') {
-                    await spotify.getPlaylist(matches[2])
-                        .then(ps => this.collatePlaylistResults({items: [ps], total: 1}))
-                        .then(message => this.sendMessage(sender, message));
-                }
-                else if(matches[1] == 'album') {
-                    await spotify.getAlbum(matches[2])
-                        .then(ps => this.collateAlbumResults({items: [ps], total: 1}))
-                        .then(message => this.sendMessage(sender, message));
-                }
-                else if(matches[1] == 'artist') {
-                    await spotify.getArtist(matches[2])
-                        .then(ps => this.collateArtistResults({items: [ps], total: 1}))
-                        .then(message => this.sendMessage(sender, message));
-                }
-            }
-            else {
-                // We want to pull results from Spotify 'paginated' in batches of $limit.
-                await spotify.search(terms, types, skip, limit).then(async (result) => {
-                    if ((!result.albums || result.albums.total === 0)
-                        && (!result.artists || result.artists.total === 0)
-                        && (!result.playlists || result.playlists.total === 0)) {
+            // We want to pull results from Spotify 'paginated' in batches of $limit.
+            await spotify.search(terms, types, skip, limit).then(async (result) => {
+                if ((!result.albums || result.albums.total === 0)
+                    && (!result.artists || result.artists.total === 0)
+                    && (!result.playlists || result.playlists.total === 0)) {
                         await this.sendMessage(sender, {text: "No matches found."});
+                }
+                else {
+                    if (result.playlists && result.playlists.total > 0) {
+                        await this.collatePlaylistResults(result.playlists, terms, skip, limit)
+                            .then(message => this.sendMessage(sender, message));
                     }
-                    else {
-                        if (result.playlists && result.playlists.total > 0) {
-                            await this.collatePlaylistResults(result.playlists, terms, skip, limit)
-                                .then(message => this.sendMessage(sender, message));
-                        }
-                        if (result.albums && result.albums.total > 0) {
-                            await this.collateAlbumResults(result.albums, terms, skip, limit)
-                                .then(message => this.sendMessage(sender, message));
-                        }
-                        if (result.artists && result.artists.total > 0) {
-                            await this.collateArtistResults(result.artists, terms, skip, limit)
-                                .then(message => this.sendMessage(sender, message));
-                        }
+                    if (result.albums && result.albums.total > 0) {
+                        await this.collateAlbumResults(result.albums, terms, skip, limit)
+                            .then(message => this.sendMessage(sender, message));
                     }
-                }).catch(err => {
-                    this.consoleError("Error searching for " + terms + ": " + err);
-                    this.sendMessage(sender, {text: "Oops.. Computer says no. Maybe try again later."});
-                });
-            }
+                    if (result.artists && result.artists.total > 0) {
+                        await this.collateArtistResults(result.artists, terms, skip, limit)
+                            .then(message => this.sendMessage(sender, message));
+                    }
+                }
+            }).catch(err => {
+                this.consoleError("Error searching for " + terms + ": " + err);
+                this.sendMessage(sender, {text: "Oops.. Computer says no. Maybe try again later."});
+            });
         }
 
         // Cancel the 'typing' indicator
