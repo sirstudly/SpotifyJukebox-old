@@ -324,7 +324,7 @@ class Spotify {
             await this.refreshAuthToken();
         }
         return await this.runTask(() => {
-            return this.api.play();
+            return this.api.play({device_id: process.env.SPOTIFY_PREFERRED_DEVICE_ID});
         });
     }
 
