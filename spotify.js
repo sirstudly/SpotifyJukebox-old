@@ -43,8 +43,11 @@ class Spotify {
 
     // (re)attempt a task, a given number of times
     async runTask(task, limit = 5) {
-        return task().catch(e => {
+        return task().catch(async(e) => {
             this.consoleError(`Attempt failed, ${limit} tries remaining. ` + e);
+            if (e.message == "Unauthorized") {
+                await this.initializeAuthToken();
+            }
             if (limit <= 0) {
                 this.consoleError("Too many attempts. Giving up.");
                 throw e;
@@ -381,6 +384,77 @@ class Spotify {
             tracks.push(nextTrack);
         }
         return tracks;
+    }
+
+    /**
+     * Checks we're still logged into Spotify and current playing something. Resumes playback if not.
+     * @returns {Promise<void>}
+     * @private
+     */
+    async _verifyPlaybackState() {
+        if (!this.isAuthTokenValid()) {
+            await this.refreshAuthToken();
+            await this.verifyLoggedIn(); // make sure browser is ready
+        }
+        else {
+            const loginButtons = await this.driver.findElements(By.xpath("//button[normalize-space()='Log in']"));
+            if (loginButtons.length) {
+                await this.verifyLoggedIn(); // make sure browser is ready
+            }
+        }
+
+        // first, check the current playback status; something should be playing before we start to enqueue
+        const playback = await this.getPlaybackState();
+        let device_id;
+        if( playback.body.device ) {
+            device_id = playback.body.device.id;
+
+            // if nothing is currently playing, start playback on the last active device
+            if(!playback.body.is_playing) {
+                await this.api.play();
+            }
+        }
+        else { // if there are currently no devices playing, list available devices and check if our preferred device is there
+            const myDevices = await this.getMyDevices();
+            if( myDevices.body.devices ) {
+                // initiate playback first on preferred device
+                const devices = myDevices.body.devices.filter( dev => { return dev.id === process.env.SPOTIFY_PREFERRED_DEVICE_ID; } );
+                if( devices.length ) {
+                    device_id = devices[0].id;
+                    await this.api.transferMyPlayback({deviceIds: [device_id], play: true});
+                }
+            }
+        }
+
+        if( !device_id ) {
+            throw new ReferenceError("Current playback device not found.");
+        }
+    }
+
+    setArtistRadio(artistId) {
+        return this.webqueue(() => this._setContextRadio(() => this.api.getArtist(artistId)));
+    }
+
+    setAlbumRadio(albumId) {
+        return this.webqueue(() => this._setContextRadio(() => this.api.getAlbum(albumId)));
+    }
+
+    setPlaylistRadio(playlistId) {
+        return this.webqueue(() => this._setContextRadio(() => this.api.getPlaylist(playlistId)));
+    }
+
+    async _setContextRadio(fnRetrieveitem) {
+        await this._verifyPlaybackState();
+
+        const item = await fnRetrieveitem();
+        this.consoleInfo("Attempting to set " + item.body.name + " radio.");
+        await this.driver.get(item.body.external_urls.spotify);
+
+        // right-click on ... and click on "Start Radio"
+        const ellipsis = await this.driver.wait(until.elementLocated(By.xpath("//button[@title='More']/div")), DEFAULT_WAIT_MS);
+        await this.driver.actions({bridge: true}).contextClick(ellipsis).perform();
+        const startRadioButton = await this.driver.wait(until.elementLocated(By.xpath("//nav[contains(@class, 'react-contextmenu--visible')]/div[normalize-space()='Start Radio']")), DEFAULT_WAIT_MS);
+        await this.driver.actions({bridge: true}).move({duration:500, origin: startRadioButton}).press().pause(200).release().perform();
     }
 
     // returns the currently playing context (e.g. album, track, playlist...)

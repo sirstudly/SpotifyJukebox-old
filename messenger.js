@@ -12,8 +12,11 @@ const Commands = {
     VIEW_TRACKS: "VIEW_TRACKS",
     VIEW_ALBUMS: "VIEW_ALBUMS",
     SET_PLAYLIST: "SET_PLAYLIST",
+    SET_PLAYLIST_RADIO: "SET_PLAYLIST_RADIO",
     PLAY_ALBUM: "PLAY_ALBUM",
-    PLAY_ARTIST: "PLAY_ARTIST"
+    PLAY_ALBUM_RADIO: "PLAY_ALBUM_RADIO",
+    PLAY_ARTIST: "PLAY_ARTIST",
+    PLAY_ARTIST_RADIO: "PLAY_ARTIST_RADIO"
 }
 
 class Messenger {
@@ -153,8 +156,16 @@ class Messenger {
                 this.setPlaylist(event.sender.id, payload.playlist);
                 break;
             }
+            case Commands.SET_PLAYLIST_RADIO: {
+                this.setPlaylistRadio(event.sender.id, payload.playlist);
+                break;
+            }
             case Commands.PLAY_ALBUM: {
                 this.setAlbum(event.sender.id, payload.album);
+                break;
+            }
+            case Commands.PLAY_ALBUM_RADIO: {
+                this.setAlbumRadio(event.sender.id, payload.album);
                 break;
             }
             case Commands.VIEW_ALBUMS: {
@@ -163,6 +174,10 @@ class Messenger {
             }
             case Commands.PLAY_ARTIST: {
                 this.setArtist(event.sender.id, payload.artist);
+                break;
+            }
+            case Commands.PLAY_ARTIST_RADIO: {
+                this.setArtistRadio(event.sender.id, payload.artist);
                 break;
             }
             case Commands.STATUS: {
@@ -379,6 +394,10 @@ class Messenger {
                         this.generatePostbackButton("Set Playlist", {
                             command: Commands.SET_PLAYLIST,
                             playlist: playlist.id
+                        }),
+                        this.generatePostbackButton("Set Playlist Radio", {
+                            command: Commands.SET_PLAYLIST_RADIO,
+                            playlist: playlist.id
                         })],
                     image_url: playlist.images.length > 0 ? playlist.images[0].url : ""
                 };
@@ -444,6 +463,10 @@ class Messenger {
                         }),
                         this.generatePostbackButton("Play Album", {
                             command: Commands.PLAY_ALBUM,
+                            album: album.id
+                        }),
+                        this.generatePostbackButton("Play Album Radio", {
+                            command: Commands.PLAY_ALBUM_RADIO,
                             album: album.id
                         })],
                     image_url: album.images.length > 0 ? album.images[0].url : ""
@@ -512,6 +535,10 @@ class Messenger {
                         }),
                         this.generatePostbackButton("Play Artist", {
                             command: Commands.PLAY_ARTIST,
+                            artist: artist.id
+                        }),
+                        this.generatePostbackButton("Play Artist Radio", {
+                            command: Commands.PLAY_ARTIST_RADIO,
                             artist: artist.id
                         })],
                     image_url: artist.images.length > 0 ? artist.images[0].url : ""
@@ -822,6 +849,15 @@ class Messenger {
             });
     }
 
+    async setPlaylistRadio(sender, playlistId) {
+        await spotify.setPlaylistRadio(playlistId)
+            .then(() => this.sendMessage(sender, {text: "You da boss."}))
+            .catch(error => {
+                this.consoleError(JSON.stringify(error));
+                this.sendMessage(sender, {text: "Oopsie, unable to set playlist radio: " + error.message});
+            });
+    }
+
     async setAlbum(sender, albumId) {
         await spotify.play("spotify:album:" + albumId)
             .then(() => this.sendMessage(sender, {text: "You da boss."}))
@@ -831,12 +867,30 @@ class Messenger {
             });
     }
 
+    async setAlbumRadio(sender, albumId) {
+        await spotify.setAlbumRadio(albumId)
+            .then(() => this.sendMessage(sender, {text: "You da boss."}))
+            .catch(error => {
+                this.consoleError(JSON.stringify(error));
+                this.sendMessage(sender, {text: "Oopsie, unable to set album radio: " + error.message});
+            });
+    }
+
     async setArtist(sender, artistId) {
         await spotify.play("spotify:artist:" + artistId)
             .then(() => this.sendMessage(sender, {text: "You da boss."}))
             .catch(error => {
                 this.consoleError(JSON.stringify(error));
-                this.sendMessage(sender, {text: "Oopsie, unable to set artist: " + error.message});
+                this.sendMessage(sender, {text: "Oopsie, unable to play artist: " + error.message});
+            });
+    }
+
+    async setArtistRadio(sender, artistId) {
+        await spotify.setArtistRadio(artistId)
+            .then(() => this.sendMessage(sender, {text: "You da boss."}))
+            .catch(error => {
+                this.consoleError(JSON.stringify(error));
+                this.sendMessage(sender, {text: "Oopsie, unable to play radio: " + error.message});
             });
     }
 
