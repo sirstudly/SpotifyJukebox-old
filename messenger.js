@@ -735,8 +735,18 @@ class Messenger {
                                 title: album.name,
                                 subtitle: album.artists.map(a => a.name).join(", "),
                                 buttons: [
-                                    this.generatePostbackButton("View Tracks", {command: Commands.VIEW_TRACKS, album: album.id}),
-                                    this.generatePostbackButton("Play Album", {command: Commands.PLAY_ALBUM, album: album.id})
+                                    this.generatePostbackButton("View Tracks", {
+                                        command: Commands.VIEW_TRACKS,
+                                        album: album.id
+                                    }),
+                                    this.generatePostbackButton("Play Album", {
+                                        command: Commands.PLAY_ALBUM,
+                                        album: album.id
+                                    }),
+                                    this.generatePostbackButton("Play Album Radio", {
+                                        command: Commands.PLAY_ALBUM_RADIO,
+                                        album: album.id
+                                    })
                                 ],
                                 image_url: album.images.length > 0 ? album.images[0].url : ""
                             };
