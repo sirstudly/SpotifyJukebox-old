@@ -331,6 +331,15 @@ class Spotify {
         });
     }
 
+    async setRepeat() {
+        if (!this.isAuthTokenValid()) {
+            await this.refreshAuthToken();
+        }
+        return await this.runTask(() => {
+            return this.api.setRepeat({state: 'context', device_id: process.env.SPOTIFY_PREFERRED_DEVICE_ID});
+        });
+    }
+
     async play(uri) {
         if (!this.isAuthTokenValid()) {
             await this.refreshAuthToken();

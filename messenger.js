@@ -93,6 +93,10 @@ class Messenger {
         }
         else {
             this.searchMusic(event.sender.id, event.message.text);
+            if( event.message.text.toLowerCase().indexOf('volume') !== -1 ) {
+                this.sendMessage(event.sender.id, {text: "If you wanted to change the volume, type :volume to check" +
+                        " the current level. :volume 50 will set it to 50% or :volume 100 will set it to 100%."});
+            }
         }
     }
 
@@ -108,19 +112,18 @@ class Messenger {
                 // Add the track (contained in the payload) to the Spotify queue.
                 // Note: We created this payload data when we created the button in searchMusic()
                 this.sendTypingIndicator(event.sender.id, true);
-                try {
+                await this.runSpotifyTask( async() => {
                     await spotify.queueTrack(payload.track);
+                }).then( () => {
                     this.sendMessage(event.sender.id, {text: "Thanks! Your track has been submitted."});
-                }
-                catch (error) {
+                }).catch( error => {
                     this.consoleError(error);
                     this.sendMessage(event.sender.id, { text: error instanceof ReferenceError ?
                             error.message : "Oops.. Computer says no. Maybe try again later."
                     });
-                }
-                finally {
+                }).finally( () => {
                     this.sendTypingIndicator(event.sender.id, false);
-                }
+                });
                 break;
             }
             case Commands.SEARCH_MORE: {
@@ -802,23 +805,27 @@ class Messenger {
     async postVolume(sender, volume) {
         await this.sendTypingIndicator(sender, true);
         if(!volume || !volume.trim()) {
-            await spotify.getVolume()
-                .then( resp => this.sendMessage(sender, {text: "Volume: " + resp}))
-                .catch(error => {
-                    this.consoleError(JSON.stringify(error));
-                    this.sendMessage(sender, {text: "Unable to get volume: " + error.message});
-                });
+            await this.runSpotifyTask( async() => {
+                await spotify.getVolume()
+            })
+            .then( resp => this.sendMessage(sender, {text: "Volume: " + resp}))
+            .catch(error => {
+                this.consoleError(JSON.stringify(error));
+                this.sendMessage(sender, {text: "Unable to get volume: " + error.message});
+            });
         }
         else {
-            await spotify.setVolume(volume)
-                .then(resp => {
-                    this.consoleInfo("Volume response: " + JSON.stringify(resp));
-                    this.sendMessage(sender, {text: "Volume set."});
-                })
-                .catch(error => {
-                    this.consoleError(JSON.stringify(error));
-                    this.sendMessage(sender, {text: "Unable to set volume: " + error.message});
-                });
+            await this.runSpotifyTask( async() => {
+                await spotify.setVolume(volume)
+            })
+            .then(resp => {
+                this.consoleInfo("Volume response: " + JSON.stringify(resp));
+                this.sendMessage(sender, {text: "Volume set."});
+            })
+            .catch(error => {
+                this.consoleError(JSON.stringify(error));
+                this.sendMessage(sender, {text: "Unable to set volume: " + error.message});
+            });
         }
         await this.sendTypingIndicator(sender, false);
     }
@@ -995,6 +1002,30 @@ class Messenger {
         else {
             this.consoleError("Unable to deliver message. Giving up.");
         }
+    }
+
+    // attempt a task, runTaskOnError on failure
+    async runSpotifyTask(task) {
+        return await task().catch((e) => {
+            this.consoleError(`Attempt failed. ` + e);
+            if (e.message == "Not Found" || e.message == "No playback device found.") {
+                this.consoleError("Doesn't look like spotify is playing anything... attempting to play.");
+                return spotify.resumePlayback()
+                    .then( () => {
+                        spotify.setRepeat().catch( err => {
+                            this.consoleError("Failed to set repeat mode. Continuing..");
+                        })
+                        return task();
+                    })
+                    .catch( err => {
+                        this.consoleError("Failed to resume playback. " + err);
+                        throw e; // rethrow as we can't do anything else
+                    });
+            }
+            else {
+                throw e; // rethrow if not the above exception type
+            }
+        })
     }
 
     logEvent(event) {
