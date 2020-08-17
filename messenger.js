@@ -806,7 +806,7 @@ class Messenger {
         await this.sendTypingIndicator(sender, true);
         if(!volume || !volume.trim()) {
             await this.runSpotifyTask( async() => {
-                await spotify.getVolume()
+                return await spotify.getVolume();
             })
             .then( resp => this.sendMessage(sender, {text: "Volume: " + resp}))
             .catch(error => {
@@ -816,7 +816,7 @@ class Messenger {
         }
         else {
             await this.runSpotifyTask( async() => {
-                await spotify.setVolume(volume)
+                return await spotify.setVolume(volume);
             })
             .then(resp => {
                 this.consoleInfo("Volume response: " + JSON.stringify(resp));
