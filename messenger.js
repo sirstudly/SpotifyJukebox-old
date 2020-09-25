@@ -793,7 +793,7 @@ class Messenger {
                         message += "Current album: " + status.context.name + " by " + status.context.artists;
                     }
                 }
-                this.sendMessage(sender, {text: message.trim()});
+                this.sendMessage(sender, {text: message.trim().substr(0, 2000)}); // hard-limit set by messenger
             })
             .catch( error => {
                 this.consoleError( error );

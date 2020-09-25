@@ -365,10 +365,10 @@ class Spotify {
 
         // wait for content panel to load because I can't guarantee there will always be something
         // in Now Playing or Next in Queue, but I assume that there will *always* be something in Next Up
-        await this.driver.wait(until.elementLocated(By.xpath("//h2[normalize-space(text())='Next Up']")), DEFAULT_WAIT_MS);
+        await this.driver.wait(until.elementLocated(By.xpath("//div[@aria-label='Next up']")), DEFAULT_WAIT_MS);
 
-        const nowPlaying = await this._listTracks("Now Playing");
-        const nextInQueue = await this._listTracks("Next in Queue");
+        const nowPlaying = await this._listTracks("Now playing");
+        const nextInQueue = await this._listTracks("Next in queue");
         return {
             now_playing: nowPlaying.length == 0 ? null : nowPlaying[0],
             queued_tracks: nextInQueue,
@@ -378,19 +378,26 @@ class Spotify {
 
     // list all tracks with the given heading on https://open.spotify.com/queue
     async _listTracks(heading) {
-        let trackItemXPath = "//div[h2[normalize-space(text())='{0}']]//div[contains(@class, 'tracklist-name') or contains(@class, 'second-line')]";
+        let trackItemXPath = "//div[@aria-label='{0}']//div[@data-testid='tracklist-row']/div[2]";
         let tracks = [];
         const trackItems = await this.driver.findElements(By.xpath(trackItemXPath.replace("{0}", heading)));
-        for(let i = 0; i < trackItems.length; i+=2) {
-            let artistAlbum = (await trackItems[i + 1].getText()).split("\n•\n");
-            let nextTrack = {
-                song_title: await trackItems[i].getText(),
-                    artist: artistAlbum[0]
-            };
-            if(artistAlbum.length > 1) {
-                nextTrack.album = artistAlbum[1];
+        for (let item of trackItems) {
+            let song_title = await item.findElement(By.css("div")).getText();
+            let artists = await item.findElements(By.css("span"));
+            let artist = "";
+            let artist_length = 0;
+            for (let a of artists) {
+                let art = await a.getText();
+                if (art.trim() != 'E') { // ignore explicit tag
+                    artist += art + " ";
+                }
+                artist_length += art.length;
             }
-            tracks.push(nextTrack);
+            tracks.push({
+                // song element contains artist as sub-element
+                song_title: song_title.substr(0, song_title.length - artist_length).trim(),
+                artist: artist.trim()
+            });
         }
         return tracks;
     }
