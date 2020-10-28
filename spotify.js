@@ -285,13 +285,13 @@ class Spotify {
         throw new Error("Volume can only be set to a whole number between 0 and 100.");
     }
 
-    async queueTrack(trackId) {
+    async queueTrack(trackURI) {
         if (!this.isAuthTokenValid()) {
             await this.refreshAuthToken();
         }
         return this.runTask(async () => {
             await this._verifyPlaybackState();
-            const result = await this.api.addToQueue("spotify:track:" + trackId,
+            const result = await this.api.addToQueue(trackURI,
                 {device_id: process.env.SPOTIFY_PREFERRED_DEVICE_ID});
             this.consoleInfo("Queued track response: " + JSON.stringify(result));
         });
@@ -346,7 +346,8 @@ class Spotify {
         if (!this.isAuthTokenValid()) {
             await this.refreshAuthToken();
         }
-        return await this.runTask(() => {
+        return await this.runTask(async () => {
+            await this._verifyPlaybackState();
             return this.api.play({device_id: process.env.SPOTIFY_PREFERRED_DEVICE_ID, context_uri: uri});
         });
     }

@@ -112,9 +112,7 @@ class Messenger {
                 // Add the track (contained in the payload) to the Spotify queue.
                 // Note: We created this payload data when we created the button in searchMusic()
                 this.sendTypingIndicator(event.sender.id, true);
-                await this.runSpotifyTask( async() => {
-                    await spotify.queueTrack(payload.track);
-                }).then( () => {
+                await spotify.queueTrack("spotify:track:" + payload.track).then( () => {
                     this.sendMessage(event.sender.id, {text: "Thanks! Your track has been submitted."});
                 }).catch( error => {
                     this.consoleError(error);
@@ -808,27 +806,23 @@ class Messenger {
     async postVolume(sender, volume) {
         await this.sendTypingIndicator(sender, true);
         if(!volume || !volume.trim()) {
-            await this.runSpotifyTask( async() => {
-                return await spotify.getVolume();
-            })
-            .then( resp => this.sendMessage(sender, {text: "Volume: " + resp}))
-            .catch(error => {
-                this.consoleError(JSON.stringify(error));
-                this.sendMessage(sender, {text: "Unable to get volume: " + error.message});
-            });
+            await spotify.getVolume()
+                .then(resp => this.sendMessage(sender, {text: "Volume: " + resp}))
+                .catch(error => {
+                    this.consoleError(JSON.stringify(error));
+                    this.sendMessage(sender, {text: "Unable to get volume: " + error.message});
+                });
         }
         else {
-            await this.runSpotifyTask( async() => {
-                return await spotify.setVolume(volume);
-            })
-            .then(resp => {
-                this.consoleInfo("Volume response: " + JSON.stringify(resp));
-                this.sendMessage(sender, {text: "Volume set."});
-            })
-            .catch(error => {
-                this.consoleError(JSON.stringify(error));
-                this.sendMessage(sender, {text: "Unable to set volume: " + error.message});
-            });
+            await spotify.setVolume(volume)
+                .then(resp => {
+                    this.consoleInfo("Volume response: " + JSON.stringify(resp));
+                    this.sendMessage(sender, {text: "Volume set."});
+                })
+                .catch(error => {
+                    this.consoleError(JSON.stringify(error));
+                    this.sendMessage(sender, {text: "Unable to set volume: " + error.message});
+                });
         }
         await this.sendTypingIndicator(sender, false);
     }
@@ -1005,30 +999,6 @@ class Messenger {
         else {
             this.consoleError("Unable to deliver message. Giving up.");
         }
-    }
-
-    // attempt a task, runTaskOnError on failure
-    async runSpotifyTask(task) {
-        return await task().catch((e) => {
-            this.consoleError(`Attempt failed. ` + e);
-            if (e.message == "Not Found" || e.message == "No playback device found.") {
-                this.consoleError("Doesn't look like spotify is playing anything... attempting to play.");
-                return spotify.resumePlayback()
-                    .then( () => {
-                        spotify.setRepeat().catch( err => {
-                            this.consoleError("Failed to set repeat mode. Continuing..");
-                        })
-                        return task();
-                    })
-                    .catch( err => {
-                        this.consoleError("Failed to resume playback. " + err);
-                        throw e; // rethrow as we can't do anything else
-                    });
-            }
-            else {
-                throw e; // rethrow if not the above exception type
-            }
-        })
     }
 
     logEvent(event) {
