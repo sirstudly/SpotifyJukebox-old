@@ -442,10 +442,10 @@ class Spotify {
             }
         }
         // force repeat/shuffle
-        if (playback.body.repeat_state == "off") {
+        if (!playback.body.actions.disallows.toggling_repeat_context && playback.body.repeat_state == "off") {
             await this.setRepeat();
         }
-        if (playback.body.shuffle_state == false) {
+        if (!playback.body.actions.disallows.toggling_shuffle && playback.body.shuffle_state == false) {
             await this.setShuffle();
         }
     }
