@@ -7,15 +7,6 @@ const fs = require("fs");
 const cq = require('concurrent-queue');
 const DEFAULT_WAIT_MS = 30000;
 
-// add missing add-to-queue functionality
-SpotifyWebApi.prototype.addTrackToQueue = function (trackId, options, callback) {
-    return WebApiRequest.builder(this.getAccessToken())
-        .withPath('/v1/me/player/queue')
-        .withQueryParameters({uri: "spotify:track:" + trackId}, options)
-        .build()
-        .execute(HttpManager.post, callback);
-}
-
 class Spotify {
 
     constructor() {
@@ -299,7 +290,9 @@ class Spotify {
             await this.refreshAuthToken();
         }
         return this.runTask(async () => {
-            const result = await this.api.addTrackToQueue(trackId);
+            await this._verifyPlaybackState();
+            const result = await this.api.addToQueue("spotify:track:" + trackId,
+                {device_id: process.env.SPOTIFY_PREFERRED_DEVICE_ID});
             this.consoleInfo("Queued track response: " + JSON.stringify(result));
         });
     }
@@ -336,7 +329,16 @@ class Spotify {
             await this.refreshAuthToken();
         }
         return await this.runTask(() => {
-            return this.api.setRepeat({state: 'context', device_id: process.env.SPOTIFY_PREFERRED_DEVICE_ID});
+            return this.api.setRepeat("context");
+        });
+    }
+
+    async setShuffle() {
+        if (!this.isAuthTokenValid()) {
+            await this.refreshAuthToken();
+        }
+        return await this.runTask(() => {
+            return this.api.setShuffle(true);
         });
     }
 
@@ -345,7 +347,7 @@ class Spotify {
             await this.refreshAuthToken();
         }
         return await this.runTask(() => {
-            return this.api.play({context_uri: uri});
+            return this.api.play({device_id: process.env.SPOTIFY_PREFERRED_DEVICE_ID, context_uri: uri});
         });
     }
 
@@ -419,31 +421,32 @@ class Spotify {
             }
         }
 
-        // first, check the current playback status; something should be playing before we start to enqueue
-        const playback = await this.getPlaybackState();
-        let device_id;
-        if( playback.body.device ) {
-            device_id = playback.body.device.id;
-
-            // if nothing is currently playing, start playback on the last active device
-            if(!playback.body.is_playing) {
-                await this.api.play();
-            }
-        }
-        else { // if there are currently no devices playing, list available devices and check if our preferred device is there
-            const myDevices = await this.getMyDevices();
-            if( myDevices.body.devices ) {
-                // initiate playback first on preferred device
-                const devices = myDevices.body.devices.filter( dev => { return dev.id === process.env.SPOTIFY_PREFERRED_DEVICE_ID; } );
-                if( devices.length ) {
-                    device_id = devices[0].id;
-                    await this.api.transferMyPlayback({deviceIds: [device_id], play: true});
-                }
-            }
-        }
-
-        if( !device_id ) {
+        // first, check that our preferred device is active and playing something
+        let devices = await this.getMyDevices();
+        devices = devices.body.devices.filter( dev => dev.id == process.env.SPOTIFY_PREFERRED_DEVICE_ID );
+        if(devices.length == 0) {
             throw new ReferenceError("Current playback device not found.");
+        }
+
+        // now check if it's currently playing anything... start it if not
+        const playback = await this.getPlaybackState();
+        if (devices[0].is_active === false || !playback.body || false === playback.body.is_playing) {
+            // do we have anything to play
+            if (!playback.body || playback.body.context == null || playback.body.item == null) {
+                await this.api.play({
+                    device_id: process.env.SPOTIFY_PREFERRED_DEVICE_ID,
+                    context_uri: process.env.SPOTIFY_FALLBACK_PLAYLIST_URI
+                });
+            } else { // resume previous context
+                await this.api.play({device_id: process.env.SPOTIFY_PREFERRED_DEVICE_ID});
+            }
+        }
+        // force repeat/shuffle
+        if (playback.body.repeat_state == "off") {
+            await this.setRepeat();
+        }
+        if (playback.body.shuffle_state == false) {
+            await this.setShuffle();
         }
     }
 
