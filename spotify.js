@@ -499,10 +499,63 @@ class Spotify {
                     };
                 }
             }
-        }).catch(e => {
+            return this._getCurrentContextFromNextUp();
+        }).catch(async(e) => {
             this.consoleError("Error attempting to retrieve playback state. " + e);
-            return null;
+            return this._getCurrentContextFromNextUp();
         });
+    }
+
+    async _getCurrentContextFromNextUp() {
+        // this link should describe what the tracklist that follows is but is blank for "radio"
+        // we'll try to determine what is playing based on the link
+        const nextUpLink = await this.driver.findElement(By.xpath("//h2[contains(text(), 'Next up') or contains(text(), 'Next from')]/a"));
+        const nextUpLinkText = (await nextUpLink.getText()).trim();
+        const nextUpLinkHref = await nextUpLink.getAttribute("href");
+        this.consoleInfo("Next up: " + nextUpLinkHref);
+        let matches = nextUpLinkHref.match(/\/radio\/(.*):(.*)$/);
+        if (matches && matches.length) {
+            if (matches[1] == 'artist') {
+                const artistInfo = await this.getArtist(matches[2]);
+                return {
+                    type: 'artist radio',
+                    name: artistInfo.name
+                }
+            }
+            else if (matches[1] == 'playlist') {
+                const playlistInfo = await this.getPlaylist(matches[2]);
+                return {
+                    type: 'playlist radio',
+                    name: playlistInfo.name
+                }
+            }
+            else if (matches[1] == 'album') {
+                const albumInfo = await this.getAlbum(matches[2]);
+                return {
+                    type: 'album radio',
+                    name: albumInfo.name
+                }
+            }
+        }
+        else if (nextUpLinkHref.indexOf("/album/") >= 0) {
+            matches = nextUpLinkHref.match(/\/album\/(.*)$/);
+            const albumInfo = await this.getAlbum(matches[1]);
+            return {
+                type: 'album',
+                name: albumInfo.name,
+                artists: albumInfo.artists.map(a => a.name).join(", ")
+            }
+        }
+        else if (nextUpLinkText.length) {
+            return {
+                type:
+                    nextUpLinkHref.indexOf("/artist/") >= 0 ? 'artist' :
+                    nextUpLinkHref.indexOf("/station/playlist/") >= 0 ? 'playlist radio' :
+                    nextUpLinkHref.indexOf("/playlist/") >= 0 ? 'playlist' : null,
+                name: nextUpLinkText
+            }
+        }
+        return null;
     }
 
     async verifyLoggedIn() {

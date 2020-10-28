@@ -786,11 +786,14 @@ class Messenger {
                     message += "There are no queued tracks.\n";
                 }
                 if (status.context) {
-                    if(status.context.type == "playlist") {
+                    if (status.context.type == "playlist") {
                         message += "Current playlist: " + status.context.name;
                     }
-                    else if(status.context.type == "album") {
+                    else if (status.context.type == "album") {
                         message += "Current album: " + status.context.name + " by " + status.context.artists;
+                    }
+                    else if (status.context.name) {
+                        message += "Current context: " + status.context.name + (status.context.type ? " " + status.context.type : "");
                     }
                 }
                 this.sendMessage(sender, {text: message.trim().substr(0, 2000)}); // hard-limit set by messenger
