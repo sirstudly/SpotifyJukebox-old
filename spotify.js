@@ -347,8 +347,8 @@ class Spotify {
             await this.refreshAuthToken();
         }
         return await this.runTask(async () => {
-            await this._verifyPlaybackState();
-            return this.api.play({device_id: process.env.SPOTIFY_PREFERRED_DEVICE_ID, context_uri: uri});
+            await this.api.play({device_id: process.env.SPOTIFY_PREFERRED_DEVICE_ID, context_uri: uri});
+            await this.forceRepeatShuffle();
         });
     }
 
@@ -433,7 +433,7 @@ class Spotify {
         const playback = await this.getPlaybackState();
         if (devices[0].is_active === false || !playback.body || false === playback.body.is_playing) {
             // do we have anything to play
-            if (!playback.body || playback.body.context == null || playback.body.item == null) {
+            if (!playback.body || (playback.body.context == null && playback.body.item == null)) {
                 await this.api.play({
                     device_id: process.env.SPOTIFY_PREFERRED_DEVICE_ID,
                     context_uri: process.env.SPOTIFY_FALLBACK_PLAYLIST_URI
@@ -442,11 +442,22 @@ class Spotify {
                 await this.api.play({device_id: process.env.SPOTIFY_PREFERRED_DEVICE_ID});
             }
         }
+        await this.forceRepeatShuffle(playback);
+    }
+
+    /**
+     * Sets shuffle and repeat mode on (if possible)
+     * @param playbackState (optional) the current playback state
+     * @returns {Promise<void>}
+     */
+    async forceRepeatShuffle(playbackState) {
+        const playback = playbackState != null ? playbackState : await this.getPlaybackState();
+
         // force repeat/shuffle
-        if (!playback.body.actions.disallows.toggling_repeat_context && playback.body.repeat_state == "off") {
+        if (playback.body && !playback.body.actions.disallows.toggling_repeat_context && playback.body.repeat_state == "off") {
             await this.setRepeat();
         }
-        if (!playback.body.actions.disallows.toggling_shuffle && playback.body.shuffle_state == false) {
+        if (playback.body && !playback.body.actions.disallows.toggling_shuffle && playback.body.shuffle_state == false) {
             await this.setShuffle();
         }
     }
