@@ -84,13 +84,15 @@ app.get("/search", async (req, res) => {
 
 app.get("/search-other", async (req, res) => {
     res.set('Content-Type', 'application/json');
-    spotify.search(req.query.terms, ['album', 'artist', 'playlist'], 0, 20)
+    res.set('Access-Control-Allow-Origin', '*');
+    spotify.search(req.query.terms, ['track', 'album', 'artist', 'playlist'], 0, 20)
         .then( result => { res.status(200).send(JSON.stringify(result)); })
         .catch( err => { res.status(500).send(JSON.stringify(err)); } );
 });
 
 app.get("/get-queue", async (req, res) => {
     res.set('Content-Type', 'application/json');
+    res.set('Access-Control-Allow-Origin', '*');
     spotify.getStatus()
         .then( status => { res.status(200).send(JSON.stringify(status));} )
         .catch( err => { res.status(500).send(JSON.stringify(err)); } );
@@ -112,7 +114,16 @@ app.get("/transfer-playback", async (req, res) => {
 
 app.get("/queue-track", async (req, res) => {
     res.set('Content-Type', 'application/json');
-    spotify.queueTrack( req.query.trackId )
+    res.set('Access-Control-Allow-Origin', '*');
+    spotify.queueTrack( req.query.trackUri )
+        .then( state => { res.status(200).send(JSON.stringify({ status: "OK" })); } )
+        .catch( err => { res.status(500).send(JSON.stringify(err)); } );
+});
+
+app.get("/play", async (req, res) => {
+    res.set('Content-Type', 'application/json');
+    res.set('Access-Control-Allow-Origin', '*');
+    spotify.play( req.query.contextUri )
         .then( state => { res.status(200).send(JSON.stringify({ status: "OK" })); } )
         .catch( err => { res.status(500).send(JSON.stringify(err)); } );
 });

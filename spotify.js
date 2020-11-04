@@ -1,6 +1,5 @@
 const SpotifyWebApi = require("spotify-web-api-node");
-const WebApiRequest = require('spotify-web-api-node/src/webapi-request.js');
-const HttpManager = require('spotify-web-api-node/src/http-manager.js');
+const agent = require('superagent').agent();
 const {Builder, By, Key, until} = require('selenium-webdriver');
 const chrome = require("selenium-webdriver/chrome");
 const fs = require("fs");
@@ -68,8 +67,34 @@ class Spotify {
         const authorizeUrl = this.api.createAuthorizeURL(scopes, "default-state");
         this.consoleInfo(`Authorization required. Going to ${authorizeUrl}`);
 
-        this.loginToSpotifyWeb(authorizeUrl)
+        await this.loginToSpotifyWeb(authorizeUrl)
             .catch(e => this.consoleError("Error initializing Spotify web: " + JSON.stringify(e)));
+        this.web_auth = await this._initWebToken();
+        this.consoleInfo("web-auth: " + JSON.stringify(this.web_auth));
+    }
+
+    /**
+     * Web token is used as bearer authorization for certain (unpublished) API requests.
+     * @returns {Promise<T | void>}
+     * @private
+     */
+    async _initWebToken() {
+        const cookies = await this.driver.manage().getCookies().then(ck => ck.map(c => c.name + "=" + c.value).join(";"));
+        return await agent.get("https://open.spotify.com/get_access_token")
+            .query({reason: "transport", productType: "web_player"})
+            .set('Content-Type', 'application/json')
+            .set('User-Agent', 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/78.0.3904.97 Safari/537.36')
+            .set('Cookie', cookies)
+            .then(resp => {
+                return {
+                    accessToken: resp.body.accessToken,
+                    tokenExpiry: resp.body.accessTokenExpirationTimestampMs
+                }
+            })
+            .catch(err => {
+                this.consoleError("Failed to initialize web token. " + JSON.stringify(err));
+                throw err;
+            });
     }
 
     async loginToSpotifyWeb(authorizeUrl) {
@@ -87,6 +112,7 @@ class Spotify {
                 this.doLogin()
             }
         });
+        return Promise.resolve('OK');
     }
 
     isAuthTokenValid() {
@@ -102,6 +128,7 @@ class Spotify {
     async initialized() {
         await this.verifyLoggedIn(); // make sure browser is ready
         this.consoleInfo("Spotify is ready!");
+        return Promise.resolve('OK');
     }
 
     async refreshAuthToken() {
@@ -197,12 +224,22 @@ class Spotify {
         });
     }
 
-    async getPlaylist(playlistId) {
+    async getPlaylist(playlistId, options) {
         if (!this.isAuthTokenValid()) {
             await this.refreshAuthToken();
         }
         return this.runTask(async () => {
-            const result = await this.api.getPlaylist(playlistId);
+            const result = await this.api.getPlaylist(playlistId, options);
+            return result.body;
+        });
+    }
+
+    async getTrack(trackId) {
+        if (!this.isAuthTokenValid()) {
+            await this.refreshAuthToken();
+        }
+        return this.runTask(async () => {
+            const result = await this.api.getTrack(trackId);
             return result.body;
         });
     }
@@ -357,52 +394,69 @@ class Spotify {
     }
 
     async _getStatus() {
-        await this.driver.get("https://open.spotify.com/queue");
-
-        // authenticate if we have to authenticate
-        const loginButtons = await this.driver.findElements(By.xpath("//button[normalize-space()='Log in']"));
-        if (loginButtons.length) {
-            await this.verifyLoggedIn(); // make sure browser is ready
-            await this.driver.get("https://open.spotify.com/queue"); // reload page
+        const endpoint = "https://gew-spclient.spotify.com/connect-state/v1/devices/hobs_"
+            + process.env.SPOTIFY_PREFERRED_DEVICE_ID.substr(0, 35);
+        let connect_state = await this._getConnectState(endpoint);
+        if(connect_state.status == 401 || connect_state.status == 400) { // token expiry
+            this.web_auth = await this._initWebToken();
+            this.consoleInfo("web-auth: " + JSON.stringify(this.web_auth));
+            connect_state = await this._getConnectState(endpoint);
         }
 
-        // wait for content panel to load because I can't guarantee there will always be something
-        // in Now Playing or Next in Queue, but I assume that there will *always* be something in Next Up
-        await this.driver.wait(until.elementLocated(By.xpath("//div[@aria-label='Next up']")), DEFAULT_WAIT_MS);
-
-        const nowPlaying = await this._listTracks("Now playing");
-        const nextInQueue = await this._listTracks("Next in queue");
-        return {
-            now_playing: nowPlaying.length == 0 ? null : nowPlaying[0],
-            queued_tracks: nextInQueue,
-            context: await this._currentContext()
+        const result = {
+            now_playing: await this._getTrackInfo(connect_state.player_state.track.uri),
+            queued_tracks: await Promise.all(connect_state.player_state.next_tracks
+                .filter(t => t.metadata.is_queued == 'true')
+                .map(t => this._getTrackInfo(t.uri)))
+                .then(p => p)
+                .catch(err => {
+                    this.consoleError("Failed to retrieve track info. " + JSON.stringify(err));
+                    return [];
+                }),
+            context: await this._getCurrentContext(connect_state.player_state.context_uri)
         };
+        return result;
     }
 
-    // list all tracks with the given heading on https://open.spotify.com/queue
-    async _listTracks(heading) {
-        let trackItemXPath = "//div[@aria-label='{0}']//div[@data-testid='tracklist-row']/div[2]";
-        let tracks = [];
-        const trackItems = await this.driver.findElements(By.xpath(trackItemXPath.replace("{0}", heading)));
-        for (let item of trackItems) {
-            let song_title = await item.findElement(By.css("div")).getText();
-            let artists = await item.findElements(By.css("span"));
-            let artist = "";
-            let artist_length = 0;
-            for (let a of artists) {
-                let art = await a.getText();
-                if (art.trim() != 'E') { // ignore explicit tag
-                    artist += art + " ";
-                }
-                artist_length += art.length;
+    async _getTrackInfo(trackUri) {
+        let match = trackUri.match(/track:(.*)$/);
+        if (match && match.length) {
+            const track = await this.getTrack(match[1]);
+            return {
+                song_title: track.name,
+                artist: track.artists.map(a => a.name).join(', ')
             }
-            tracks.push({
-                // song element contains artist as sub-element
-                song_title: song_title.substr(0, song_title.length - artist_length).trim(),
-                artist: artist.trim()
-            });
         }
-        return tracks;
+        this.consoleError("Failed to retrieve current track from uri: " + trackUri);
+        return null;
+    }
+
+    _getConnectState(url) {
+        return agent.put(url)
+            .auth(this.web_auth.accessToken, {type: 'bearer'})
+            .set('Content-Type', 'application/json')
+            .set('User-Agent', 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/78.0.3904.97 Safari/537.36')
+            // X-Spotify-ConnectionId is received from wss://gew-dealer.spotify.com/?access_token=XXXXXXXXXXX
+            // although, it doesn't seem to matter? can use a made up connection id and still get response?
+            // WSS also has cluster events - good for viewing live track times, etc
+            .set('X-Spotify-Connection-Id', 'M2JmZmI1NTEtM2ViNi00ODFmLWFmOTEtMzk5MDViZjI0M2E2K2RlYWxlcit0Y3A6Ly9nZXcxLWRlYWxlci1iLXEwMzQuZ2V3MS5zcG90aWZ5Lm5ldDo1NzAwKzQ5MjgwODMwNjU1RjhBMEU4QkZCRDA1QUZCMTQ0MUNERDI4MzcxRUVCNUNDMzUyNDA3MDVDRDQ0OTAyNERDRDQ=')
+            .buffer(true) // because content-type isn't set in the response header, we need to get the raw text rather than the (parsed) body
+            .send({
+                "member_type": "CONNECT_STATE",
+                // web player has capabilities { "can_be_player": false, "hidden": true }
+                // not sure how this is used...
+                "device": {"device_info": {"capabilities": {}}}
+            })
+            .then(resp => JSON.parse(resp.text))
+            .catch(err => {
+                this.consoleError("Failed to retrieve connection state. " + JSON.stringify(err));
+                // 400 = MISSING_USER_INFO (happens sometimes when spotify web session not initialized
+                // 401 = token expired
+                if(err.status == 400 || err.status == 401) {
+                    return err;
+                }
+                throw err;
+            });
     }
 
     /**
@@ -488,89 +542,47 @@ class Spotify {
         await this.driver.actions({bridge: true}).move({duration:500, origin: startRadioButton}).press().pause(200).release().perform();
     }
 
-    // returns the currently playing context (e.g. album, track, playlist...)
-    async _currentContext() {
-        return await this.getPlaybackState().then(async (ps) => {
-            if (ps.body && ps.body.context) {
-                if (ps.body.context.type == "playlist") {
-                    const playlist = await this.runTask(() => {
-                        return this.api.getPlaylist(
-                            ps.body.context.uri.substr(ps.body.context.uri.lastIndexOf(":") + 1),
-                            {fields: "name,description"});
-                    });
-                    return {
-                        type : "playlist",
-                        name : playlist.body.name
-                    };
-                }
-                if (ps.body.context.type == "album") {
-                    const album = await this.runTask(() => {
-                        return this.api.getAlbum(ps.body.context.uri.substr(ps.body.context.uri.lastIndexOf(":") + 1));
-                    });
-                    return {
-                        type : "album",
-                        name : album.body.name,
-                        artists: album.body.artists.map(a => a.name).join(", ")
-                    };
-                }
-            }
-            return this._getCurrentContextFromNextUp();
-        }).catch(async(e) => {
-            this.consoleError("Error attempting to retrieve playback state. " + e);
-            return this._getCurrentContextFromNextUp();
-        });
-    }
-
-    async _getCurrentContextFromNextUp() {
-        // this link should describe what the tracklist that follows is but is blank for "radio"
-        // we'll try to determine what is playing based on the link
-        const nextUpLink = await this.driver.findElement(By.xpath("//h2[contains(text(), 'Next up') or contains(text(), 'Next from')]/a"));
-        const nextUpLinkText = (await nextUpLink.getText()).trim();
-        const nextUpLinkHref = await nextUpLink.getAttribute("href");
-        this.consoleInfo("Next up: " + nextUpLinkHref);
-        let matches = nextUpLinkHref.match(/\/radio\/(.*):(.*)$/);
-        if (matches && matches.length) {
-            if (matches[1] == 'artist') {
-                const artistInfo = await this.getArtist(matches[2]);
-                return {
-                    type: 'artist radio',
-                    name: artistInfo.name
-                }
-            }
-            else if (matches[1] == 'playlist') {
-                const playlistInfo = await this.getPlaylist(matches[2]);
-                return {
-                    type: 'playlist radio',
-                    name: playlistInfo.name
-                }
-            }
-            else if (matches[1] == 'album') {
-                const albumInfo = await this.getAlbum(matches[2]);
-                return {
-                    type: 'album radio',
-                    name: albumInfo.name
-                }
-            }
-        }
-        else if (nextUpLinkHref.indexOf("/album/") >= 0) {
-            matches = nextUpLinkHref.match(/\/album\/(.*)$/);
-            const albumInfo = await this.getAlbum(matches[1]);
+    /**
+     * Returns the currently playing context (e.g. album, track, playlist...)
+     * @param contextUri spotify context URI
+     * @returns {Promise<unknown>}
+     * @private
+     */
+    async _getCurrentContext(contextUri) {
+        const is_radio = contextUri.indexOf("radio") >= 0 || contextUri.indexOf("station") >= 0;
+        const id = contextUri.substr(contextUri.lastIndexOf(":") + 1);
+        if (contextUri.indexOf("playlist") >= 0) {
+            const playlist = await this.getPlaylist(id, {fields: "name,description"})
             return {
-                type: 'album',
-                name: albumInfo.name,
-                artists: albumInfo.artists.map(a => a.name).join(", ")
-            }
+                type: "playlist" + (is_radio ? " radio" : ""),
+                name: playlist.name
+            };
         }
-        else if (nextUpLinkText.length) {
+        else if (contextUri.indexOf("album") >= 0) {
+            const album = await this.getAlbum(id)
             return {
-                type:
-                    nextUpLinkHref.indexOf("/artist/") >= 0 ? 'artist' :
-                    nextUpLinkHref.indexOf("/station/playlist/") >= 0 ? 'playlist radio' :
-                    nextUpLinkHref.indexOf("/playlist/") >= 0 ? 'playlist' : null,
-                name: nextUpLinkText
-            }
+                type: "album" + (is_radio ? " radio" : ""),
+                name: album.name,
+                artists: album.artists.map(a => a.name).join(", ")
+            };
         }
-        return null;
+        else if (contextUri.indexOf("artist") >= 0) {
+            const artist = await this.getArtist(id)
+            return {
+                type: "artist" + (is_radio ? " radio" : ""),
+                name: artist.name
+            };
+        }
+        else if (contextUri.indexOf("track") >= 0) {
+            const track = await this.getTrack(id)
+            return {
+                type: "track" + (is_radio ? " radio" : ""),
+                name: track.name,
+                artists: track.artists.map(a => a.name).join(', ')
+            };
+        }
+        this.consoleError("Unable to determine context from URI: " + contextUri)
+        return Promise.resolve(null);
     }
 
     async verifyLoggedIn() {
@@ -583,7 +595,7 @@ class Spotify {
         }
         else {
             this.consoleInfo("CHROME: No login button. Already logged in?");
-            const userLink = "//span[@class='UserWidget__user-link']";
+            const userLink = "//span[@data-testid='user-widget-name']";
             await this.driver.wait(until.elementLocated(By.xpath(userLink)), DEFAULT_WAIT_MS);
             const accountName = await this.driver.findElement(By.xpath(userLink)).getText();
             this.consoleInfo("CHROME: Logged in as " + accountName);

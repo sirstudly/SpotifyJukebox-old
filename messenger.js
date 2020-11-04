@@ -791,7 +791,8 @@ class Messenger {
                         message += "Current album: " + status.context.name + " by " + status.context.artists;
                     }
                     else if (status.context.name) {
-                        message += "Current context: " + status.context.name + (status.context.type ? " " + status.context.type : "");
+                        message += "Current context: " + status.context.name +
+                            (status.context.artists ? " by " + status.context.artists : "") + " " + status.context.type;
                     }
                 }
                 this.sendMessage(sender, {text: message.trim().substr(0, 2000)}); // hard-limit set by messenger
