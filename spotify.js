@@ -13,17 +13,17 @@ class Spotify {
         // attempt twice. on failure, reinitialize everything and attempt twice more...
         this.webqueue = cq().limit({concurrency: 1}).process(task =>
             task().catch( e => {
-                this.consoleError("Attempt 2: " + e);
+                this.consoleError("Attempt 2: ", e);
                 return task();
             } ).catch( e => {
-                this.consoleError("Something wonky this way comes.. reinitializing... " + e);
+                this.consoleError("Something wonky this way comes.. reinitializing... ", e);
                 return this.driver.quit()
                     .then(() => this.sleep(2000))
                     .then(() => this.initializeAuthToken()
                         .then( () => {
                             this.consoleInfo("Attempt 3");
                             return task().catch( ex => {
-                                this.consoleError("Last Attempt: " + ex);
+                                this.consoleError("Last Attempt: ", ex);
                                 return task();
                             } )
                         } ) )
@@ -34,7 +34,7 @@ class Spotify {
     // (re)attempt a task, a given number of times
     async runTask(task, limit = 5) {
         return task().catch(async(e) => {
-            this.consoleError(`Attempt failed, ${limit} tries remaining. ` + e);
+            this.consoleError(`Attempt failed, ${limit} tries remaining.`, e);
             if (e.message == "Unauthorized") {
                 await this.initializeAuthToken();
             }
@@ -68,9 +68,9 @@ class Spotify {
         this.consoleInfo(`Authorization required. Going to ${authorizeUrl}`);
 
         await this.loginToSpotifyWeb(authorizeUrl)
-            .catch(e => this.consoleError("Error initializing Spotify web: " + JSON.stringify(e)));
+            .catch(e => this.consoleError("Error initializing Spotify web:", e));
         this.web_auth = await this._initWebToken();
-        this.consoleInfo("web-auth: " + JSON.stringify(this.web_auth));
+        this.consoleInfo("web-auth:", this.web_auth);
     }
 
     /**
@@ -92,7 +92,7 @@ class Spotify {
                 }
             })
             .catch(err => {
-                this.consoleError("Failed to initialize web token. " + JSON.stringify(err));
+                this.consoleError("Failed to initialize web token.", err);
                 throw err;
             });
     }
@@ -140,7 +140,7 @@ class Spotify {
         this.auth.expires_at = expiresAt;
 
         this.api.setAccessToken(result.body.access_token);
-        this.consoleInfo("Access Token: " + result.body.access_token);
+        this.consoleInfo("Access Token:", result.body.access_token);
     }
 
     async receivedAuthCode(authCode) {
@@ -156,7 +156,7 @@ class Spotify {
         // Provide the Spotify library with the tokens
         this.api.setAccessToken(this.auth.access_token);
         this.api.setRefreshToken(this.auth.refresh_token);
-        this.consoleInfo("Access Token: " + this.auth.access_token);
+        this.consoleInfo("Access Token:", this.auth.access_token);
     }
 
     updateMessengerCallback() {
@@ -180,7 +180,7 @@ class Spotify {
         await this.driver.get("http://localhost:4040/status");
         const ngrok_url = await this.driver.wait(until.elementLocated(By.xpath(
             "//h4[text()='command_line']/../div/table/tbody/tr[th[text()='URL']]/td")), DEFAULT_WAIT_MS).getText();
-        this.consoleInfo("ngrok URL: " + ngrok_url);
+        this.consoleInfo("ngrok URL:", ngrok_url);
         return ngrok_url;
     }
 
@@ -330,7 +330,7 @@ class Spotify {
             await this._verifyPlaybackState();
             const result = await this.api.addToQueue(trackURI,
                 {device_id: process.env.SPOTIFY_PREFERRED_DEVICE_ID});
-            this.consoleInfo("Queued track response: " + JSON.stringify(result));
+            this.consoleInfo("Queued track response:", result);
         });
     }
 
@@ -399,7 +399,7 @@ class Spotify {
         let connect_state = await this._getConnectState(endpoint);
         if(connect_state.status == 401 || connect_state.status == 400) { // token expiry
             this.web_auth = await this._initWebToken();
-            this.consoleInfo("web-auth: " + JSON.stringify(this.web_auth));
+            this.consoleInfo("web-auth:", this.web_auth);
             connect_state = await this._getConnectState(endpoint);
         }
 
@@ -410,7 +410,7 @@ class Spotify {
                 .map(t => this._getTrackInfo(t.uri)))
                 .then(p => p)
                 .catch(err => {
-                    this.consoleError("Failed to retrieve track info. " + JSON.stringify(err));
+                    this.consoleError("Failed to retrieve track info.", err);
                     return [];
                 }),
             context: await this._getCurrentContext(connect_state.player_state.context_uri)
@@ -427,7 +427,7 @@ class Spotify {
                 artist: track.artists.map(a => a.name).join(', ')
             }
         }
-        this.consoleError("Failed to retrieve current track from uri: " + trackUri);
+        this.consoleError("Failed to retrieve current track from uri:", trackUri);
         return null;
     }
 
@@ -449,7 +449,7 @@ class Spotify {
             })
             .then(resp => JSON.parse(resp.text))
             .catch(err => {
-                this.consoleError("Failed to retrieve connection state. " + JSON.stringify(err));
+                this.consoleError("Failed to retrieve connection state.", err);
                 // 400 = MISSING_USER_INFO (happens sometimes when spotify web session not initialized
                 // 401 = token expired
                 if(err.status == 400 || err.status == 401) {
@@ -532,7 +532,7 @@ class Spotify {
         await this._verifyPlaybackState();
 
         const item = await fnRetrieveitem();
-        this.consoleInfo("Attempting to set " + item.body.name + " radio.");
+        this.consoleInfo(`Attempting to set ${item.body.name} radio.`);
         await this.driver.get(item.body.external_urls.spotify);
 
         // right-click on ... and click on "Start Radio"
@@ -642,7 +642,7 @@ class Spotify {
 
     async savePageSource(filename) {
         const currentUrl = await this.driver.getCurrentUrl();
-        this.consoleInfo( "Writing source to " + filename + " for " + currentUrl );
+        this.consoleInfo( `Writing source to ${filename} for ${currentUrl}` );
         await this.driver.getPageSource().then(src => {
             fs.writeFileSync(filename, src, function (err) { throw err; });
         });
@@ -665,12 +665,16 @@ class Spotify {
         return new Promise(resolve => setTimeout(resolve, ms));
     }
 
-    consoleInfo(message) {
-        console.info(new Date().toLocaleString() + " " + message);
+    consoleInfo(...args) {
+        const arg_copy = [...args];
+        arg_copy.splice(0, 0, new Date().toLocaleString())
+        console.info(...arg_copy);
     }
 
-    consoleError(message) {
-        console.error(new Date().toLocaleString() + " " + message);
+    consoleError(...args) {
+        const arg_copy = [...args];
+        arg_copy.splice(0, 0, new Date().toLocaleString())
+        console.error(...arg_copy);
     }
 }
 
