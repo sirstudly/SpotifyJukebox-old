@@ -115,7 +115,7 @@ class Messenger {
                 await spotify.queueTrack("spotify:track:" + payload.track).then( () => {
                     this.sendMessage(event.sender.id, {text: "Thanks! Your track has been submitted."});
                 }).catch( error => {
-                    this.consoleError(error);
+                    this.consoleError("Failed to add track", error);
                     this.sendMessage(event.sender.id, { text: error instanceof ReferenceError ?
                             error.message : "Oops.. Computer says no. Maybe try again later."
                     });
@@ -291,7 +291,7 @@ class Messenger {
                 }
             })
             .catch( err => {
-                this.consoleError("Error searching for " + terms + ": " + err);
+                this.consoleError("Error searching for " + terms, err);
                 this.sendMessage(sender, { text: "Oops.. Computer says no. Maybe try again later." });
             });
 
@@ -329,7 +329,7 @@ class Messenger {
                     }
                 }
             }).catch(err => {
-                this.consoleError("Error searching for " + terms + ": " + err);
+                this.consoleError("Error searching for " + terms, err);
                 this.sendMessage(sender, {text: "Oops.. Computer says no. Maybe try again later."});
             });
         }
@@ -611,7 +611,7 @@ class Messenger {
                 }
             })
             .catch( err => {
-                this.consoleError("Error viewing playlist tracks: " + err);
+                this.consoleError("Error viewing playlist tracks:", err);
                 this.sendMessage(sender, { text: "Oops.. Computer says no. Maybe try again later." });
             });
 
@@ -678,7 +678,7 @@ class Messenger {
                 }
             })
             .catch( err => {
-                this.consoleError("Error viewing album tracks: " + err);
+                this.consoleError("Error viewing album tracks:", err);
                 this.sendMessage(sender, { text: "Oops.. Computer says no. Maybe try again later." });
             });
 
@@ -758,7 +758,7 @@ class Messenger {
                 }
             })
             .catch( err => {
-                this.consoleError("Error viewing artist albums: " + err);
+                this.consoleError("Error viewing artist albums:", err);
                 this.sendMessage(sender, { text: "Oops.. Computer says no. Maybe try again later." });
             });
 
@@ -798,7 +798,7 @@ class Messenger {
                 this.sendMessage(sender, {text: message.trim().substr(0, 2000)}); // hard-limit set by messenger
             })
             .catch( error => {
-                this.consoleError( error );
+                this.consoleError("Failed to get status", error);
                 this.sendMessage(sender, { text: "Oops.. Computer says no. Maybe try again later." });
             });
         await this.sendTypingIndicator(sender, false);
@@ -810,18 +810,18 @@ class Messenger {
             await spotify.getVolume()
                 .then(resp => this.sendMessage(sender, {text: "Volume: " + resp}))
                 .catch(error => {
-                    this.consoleError(JSON.stringify(error));
+                    this.consoleError("Failed to get volume.", error);
                     this.sendMessage(sender, {text: "Unable to get volume: " + error.message});
                 });
         }
         else {
             await spotify.setVolume(volume)
                 .then(resp => {
-                    this.consoleInfo("Volume response: " + JSON.stringify(resp));
+                    this.consoleInfo("Volume response:", resp);
                     this.sendMessage(sender, {text: "Volume set."});
                 })
                 .catch(error => {
-                    this.consoleError(JSON.stringify(error));
+                    this.consoleError("Failed to set volume.", error);
                     this.sendMessage(sender, {text: "Unable to set volume: " + error.message});
                 });
         }
@@ -832,7 +832,7 @@ class Messenger {
         await spotify.skipTrack()
             .then(() => this.sendMessage(sender, {text: "As you wish master."}))
             .catch(error => {
-                this.consoleError(JSON.stringify(error));
+                this.consoleError("Failed to skip track.", error);
                 this.sendMessage(sender, {text: "Unable to skip track: " + error.message});
             });
     }
@@ -841,7 +841,7 @@ class Messenger {
         await spotify.pausePlayback()
             .then(() => this.sendMessage(sender, {text: "As you wish master."}))
             .catch(error => {
-                this.consoleError(JSON.stringify(error));
+                this.consoleError("Failed to pause playback.", error);
                 this.sendMessage(sender, {text: "Unable to pause playback: " + error.message});
             });
     }
@@ -850,7 +850,7 @@ class Messenger {
         await spotify.resumePlayback()
             .then(() => this.sendMessage(sender, {text: "As you wish master."}))
             .catch(error => {
-                this.consoleError(JSON.stringify(error));
+                this.consoleError("Failed to resume playback.", error);
                 this.sendMessage(sender, {text: "Unable to resume playback: " + error.message});
             });
     }
@@ -859,7 +859,7 @@ class Messenger {
         await spotify.play("spotify:playlist:" + playlistId)
             .then(() => this.sendMessage(sender, {text: "You da boss."}))
             .catch(error => {
-                this.consoleError(JSON.stringify(error));
+                this.consoleError("Failed to set playlist.", error);
                 this.sendMessage(sender, {text: "Oopsie, unable to set playlist: " + error.message});
             });
     }
@@ -868,7 +868,7 @@ class Messenger {
         await spotify.setPlaylistRadio(playlistId)
             .then(() => this.sendMessage(sender, {text: "You da boss."}))
             .catch(error => {
-                this.consoleError(JSON.stringify(error));
+                this.consoleError("Failed to set playlist radio.", error);
                 this.sendMessage(sender, {text: "Oopsie, unable to set playlist radio: " + error.message});
             });
     }
@@ -877,7 +877,7 @@ class Messenger {
         await spotify.play("spotify:album:" + albumId)
             .then(() => this.sendMessage(sender, {text: "You da boss."}))
             .catch(error => {
-                this.consoleError(JSON.stringify(error));
+                this.consoleError("Failed to set album.", error);
                 this.sendMessage(sender, {text: "Oopsie, unable to set album: " + error.message});
             });
     }
@@ -886,7 +886,7 @@ class Messenger {
         await spotify.setAlbumRadio(albumId)
             .then(() => this.sendMessage(sender, {text: "You da boss."}))
             .catch(error => {
-                this.consoleError(JSON.stringify(error));
+                this.consoleError("Failed to set album radio.", error);
                 this.sendMessage(sender, {text: "Oopsie, unable to set album radio: " + error.message});
             });
     }
@@ -895,7 +895,7 @@ class Messenger {
         await spotify.play("spotify:artist:" + artistId)
             .then(() => this.sendMessage(sender, {text: "You da boss."}))
             .catch(error => {
-                this.consoleError(JSON.stringify(error));
+                this.consoleError("Failed to set artist.", error);
                 this.sendMessage(sender, {text: "Oopsie, unable to play artist: " + error.message});
             });
     }
@@ -904,7 +904,7 @@ class Messenger {
         await spotify.setArtistRadio(artistId)
             .then(() => this.sendMessage(sender, {text: "You da boss."}))
             .catch(error => {
-                this.consoleError(JSON.stringify(error));
+                this.consoleError("Failed to set artist radio.", error);
                 this.sendMessage(sender, {text: "Oopsie, unable to play radio: " + error.message});
             });
     }
@@ -1014,12 +1014,16 @@ class Messenger {
         .catch(error => this.consoleError(`Failed to log event (${error}) from ${event.sender.id}: ${msg}`)));
     }
 
-    consoleInfo(message) {
-        console.info(new Date().toLocaleString() + " " + message);
+    consoleInfo(...args) {
+        const arg_copy = [...args];
+        arg_copy.splice(0, 0, new Date().toLocaleString())
+        console.info(...arg_copy);
     }
 
-    consoleError(message) {
-        console.error(new Date().toLocaleString() + " " + message);
+    consoleError(...args) {
+        const arg_copy = [...args];
+        arg_copy.splice(0, 0, new Date().toLocaleString())
+        console.error(...arg_copy);
     }
 }
 
