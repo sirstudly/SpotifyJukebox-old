@@ -244,6 +244,16 @@ class Spotify {
         });
     }
 
+    async getTracks(trackIds) {
+        if (!this.isAuthTokenValid()) {
+            await this.refreshAuthToken();
+        }
+        return this.runTask(async () => {
+            const result = await this.api.getTracks(trackIds);
+            return result.body.tracks;
+        });
+    }
+
     async getAlbum(albumId) {
         if (!this.isAuthTokenValid()) {
             await this.refreshAuthToken();
@@ -479,32 +489,24 @@ class Spotify {
             connect_state = await this._getConnectState(endpoint);
         }
 
+        // for efficiency, get all track info in one request
+        let trackIds = [connect_state.player_state.track.uri];
+        trackIds.push(...connect_state.player_state.next_tracks
+            .filter(t => t.metadata.is_queued == 'true')
+            .map(t => t.uri));
+        trackIds = trackIds.slice(0, 50) // API allows for max of 50
+            .map(uri => uri.substr(uri.lastIndexOf(":") + 1));
+        const tracks = await this.getTracks(trackIds);
+        const getTrackInfo = (track) => { return {
+            song_title: track.name,
+                artist: track.artists.map(a => a.name).join(', ')
+        }};
         const result = {
-            now_playing: await this._getTrackInfo(connect_state.player_state.track.uri),
-            queued_tracks: await Promise.all(connect_state.player_state.next_tracks
-                .filter(t => t.metadata.is_queued == 'true')
-                .map(t => this._getTrackInfo(t.uri)))
-                .then(p => p)
-                .catch(err => {
-                    this.consoleError("Failed to retrieve track info.", err);
-                    return [];
-                }),
+            now_playing: getTrackInfo(tracks[0]),
+            queued_tracks: tracks.slice(1).map(t => getTrackInfo(t)),
             context: await this._getCurrentContext(connect_state.player_state.context_uri)
         };
         return result;
-    }
-
-    async _getTrackInfo(trackUri) {
-        let match = trackUri.match(/track:(.*)$/);
-        if (match && match.length) {
-            const track = await this.getTrack(match[1]);
-            return {
-                song_title: track.name,
-                artist: track.artists.map(a => a.name).join(', ')
-            }
-        }
-        this.consoleError("Failed to retrieve current track from uri:", trackUri);
-        return null;
     }
 
     _getConnectState(url) {
