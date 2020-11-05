@@ -67,96 +67,100 @@ app.post("/webhook", (req, res) => {
 
 app.get("/spotify", (req, res) => {
     spotify.receivedAuthCode(req.query.code)
-        .then( () => { res.status(200).send(); })
-        .catch( err => { res.status(500).send(JSON.stringify(err)); } );
+        .then(() => res.status(200).send())
+        .catch(err => res.status(500).send({error: err.message}));
 
     // Perform other start-up tasks, now that we have access to the api
     spotify.initialized()
-        .catch(err => console.error("Error during initialization: " + JSON.stringify(err)));
+        .catch(err => console.error("Error during initialization: ", err));
 });
 
 app.get("/search", async (req, res) => {
     res.set('Content-Type', 'application/json');
+    res.set('Access-Control-Allow-Origin', '*');
     spotify.searchTracks(req.query.terms, 0, 20)
-        .then( result => { res.status(200).send(JSON.stringify(result)); })
-        .catch( err => { res.status(500).send(JSON.stringify(err)); } );
+        .then(state => res.status(200).send(state))
+        .catch(err => res.status(500).send({error: err.message}));
 });
 
-app.get("/search-other", async (req, res) => {
+app.get("/search-all", async (req, res) => {
     res.set('Content-Type', 'application/json');
     res.set('Access-Control-Allow-Origin', '*');
     spotify.search(req.query.terms, ['track', 'album', 'artist', 'playlist'], 0, 20)
-        .then( result => { res.status(200).send(JSON.stringify(result)); })
-        .catch( err => { res.status(500).send(JSON.stringify(err)); } );
+        .then(state => res.status(200).send(state))
+        .catch(err => res.status(500).send({error: err.message}));
 });
 
-app.get("/get-queue", async (req, res) => {
+app.get("/now-playing", async (req, res) => {
     res.set('Content-Type', 'application/json');
     res.set('Access-Control-Allow-Origin', '*');
     spotify.getStatus()
-        .then( status => { res.status(200).send(JSON.stringify(status));} )
-        .catch( err => { res.status(500).send(JSON.stringify(err)); } );
+        .then(state => res.status(200).send(state))
+        .catch(err => res.status(500).send({error: err.message}));
 });
 
 app.get("/get-devices", async (req, res) => {
     res.set('Content-Type', 'application/json');
+    res.set('Access-Control-Allow-Origin', '*');
     spotify.getMyDevices()
-        .then( devices => { res.status(200).send(JSON.stringify(devices)); } )
-        .catch( err => { res.status(500).send(JSON.stringify(err)); } );
+        .then(state => res.status(200).send(state))
+        .catch(err => res.status(500).send({error: err.message}));
 });
 
 app.get("/transfer-playback", async (req, res) => {
     res.set('Content-Type', 'application/json');
+    res.set('Access-Control-Allow-Origin', '*');
     spotify.transferPlaybackToDevice( req.query.deviceId, "true" === req.query.playNow )
-        .then( response => { res.status(200).send(JSON.stringify(response)); } )
-        .catch( err => { res.status(500).send(JSON.stringify(err)); } );
+        .then(state => res.status(200).send(state))
+        .catch(err => res.status(500).send({error: err.message}));
 });
 
 app.get("/queue-track", async (req, res) => {
     res.set('Content-Type', 'application/json');
     res.set('Access-Control-Allow-Origin', '*');
-    spotify.queueTrack( req.query.trackUri )
-        .then( state => { res.status(200).send(JSON.stringify({ status: "OK" })); } )
-        .catch( err => { res.status(500).send(JSON.stringify(err)); } );
+    spotify.queueTrack(req.query.trackUri)
+        .then(state => res.status(200).send(state))
+        .catch(err => res.status(500).send({error: err.message}));
 });
 
 app.get("/play", async (req, res) => {
     res.set('Content-Type', 'application/json');
     res.set('Access-Control-Allow-Origin', '*');
     spotify.play( req.query.contextUri )
-        .then( state => { res.status(200).send(JSON.stringify({ status: "OK" })); } )
-        .catch( err => { res.status(500).send(JSON.stringify(err)); } );
+        .then(state => res.status(200).send(state))
+        .catch(err => res.status(500).send({error: err.message}));
 });
 
 app.get("/get-playback-state", async (req, res) => {
     res.set('Content-Type', 'application/json');
+    res.set('Access-Control-Allow-Origin', '*');
     spotify.getPlaybackState()
-        .then( state => { res.status(200).send(JSON.stringify(state)); } )
-        .catch( err => { res.status(500).send(JSON.stringify(err)); } );
+        .then(state => res.status(200).send(state))
+        .catch(err => res.status(500).send({error: err.message}));
 });
 
 app.get("/dump-screenshot", async (req, res) => {
     spotify.saveScreenshot("screenshot.png")
-        .then( () => { res.sendFile(path.join(__dirname, 'screenshot.png') ); } )
-        .catch( err => { res.status(500).send(JSON.stringify(err)); } );
+        .then(() => res.sendFile(path.join(__dirname, 'screenshot.png')))
+        .catch(err => res.status(500).send({error: err.message}));
 });
 
 app.get("/dump-webpage", async (req, res) => {
     spotify.savePageSource("currentpage.html")
-        .then( () => { res.sendFile(path.join(__dirname, 'currentpage.html') ); } )
-        .catch( err => { res.status(500).send(JSON.stringify(err)); } );
+        .then(() => res.sendFile(path.join(__dirname, 'currentpage.html')))
+        .catch(err => res.status(500).send({error: err.message}));
 });
 
 app.get("/dump-ngrok", async (req, res) => {
     spotify.takeScreenshot("http://localhost:4040/status", "currentpage.png")
-        .then( () => { res.sendFile(path.join(__dirname, 'currentpage.png') ); } )
-        .catch( err => { res.status(500).send(JSON.stringify(err)); } );
+        .then(() => res.sendFile(path.join(__dirname, 'currentpage.png')))
+        .catch(err => res.status(500).send({error: err.message}));
 });
 
 app.get("/register-messenger-endpoint", async (req, res) => {
     spotify.updateMessengerCallback()
-        .then(() => res.status(200).send(JSON.stringify({status: "OK"})))
-        .catch(err => res.status(500).send(JSON.stringify(err)));
+        .then(() => res.status(200).send({status: "OK"}))
+        .catch(err => res.status(500).send({error: err.message}));
 });
 
 (async function initSpotify() {
