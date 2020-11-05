@@ -384,9 +384,85 @@ class Spotify {
             await this.refreshAuthToken();
         }
         return await this.runTask(async () => {
-            await this.api.play({device_id: process.env.SPOTIFY_PREFERRED_DEVICE_ID, context_uri: uri});
+            let response;
+            // official API does not support station/radio
+            if (uri.indexOf('station') < 0 && uri.indexOf('radio') < 0) {
+                response = await this.api.play({device_id: process.env.SPOTIFY_PREFERRED_DEVICE_ID, context_uri: uri});
+            } else {
+                const webPlayerId = await this._getWebPlayerId();
+                response = await this._play(uri, webPlayerId, process.env.SPOTIFY_PREFERRED_DEVICE_ID);
+                if (response.status == 401 || response.status == 400) { // token expiry
+                    this.web_auth = await this._initWebToken();
+                    this.consoleInfo("web-auth:", this.web_auth);
+                    response = await this._play(uri, webPlayerId, process.env.SPOTIFY_PREFERRED_DEVICE_ID);
+                }
+            }
+            this.consoleInfo("play response:", response);
             await this.forceRepeatShuffle();
+            return response;
         });
+    }
+
+    async _getWebPlayerId() {
+        let devices = await this.getMyDevices();
+        const fn_filter_web_player = dev => dev.name == "Web Player (Chrome)";
+        devices = devices.body.devices.filter(fn_filter_web_player);
+        if (devices.length == 0) {
+            await this.verifyLoggedIn();
+            devices = devices.body.devices.filter(fn_filter_web_player);
+            if (devices.length == 0) {
+                throw new ReferenceError("Error looking up device. Please try again later.");
+            }
+        }
+        return devices[0].id;
+    }
+
+    /**
+     * Sends a play message to the corresponding device using the unofficial (web) API
+     * @param uri e.g. spotify:radio:playlist:SPOTIFY_ID
+     * @param fromDeviceId device sending this message
+     * @param toDeviceId device doing the playback
+     * @returns {Promise<T | *>}
+     * @private
+     */
+    _play(uri, fromDeviceId, toDeviceId) {
+        return agent.post(`https://gew-spclient.spotify.com/connect-state/v1/player/command/from/${fromDeviceId}/to/${toDeviceId}`)
+            .auth(this.web_auth.accessToken, {type: 'bearer'})
+            .set('Content-Type', 'application/json') // text/plain;charset=UTF-8 (in chrome web player)
+            .set('User-Agent', 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/78.0.3904.97 Safari/537.36')
+            .buffer(true)
+            .send({
+                "command": {
+                    "context": {
+                        "uri": uri,
+                        "url": "context://" + uri,
+                        "metadata": {}
+                    },
+                    "play_origin": {
+                        "feature_identifier": "harmony",
+                        "feature_version": "4.9.0-d242618"
+                    },
+                    "options": {
+                        "license": "premium",
+                        "skip_to": {},
+                        "player_options_override": {
+                            "repeating_track": false,
+                            "repeating_context": true
+                        }
+                    },
+                    "endpoint": "play"
+                }
+            })
+            .then(resp => JSON.parse(resp.text))
+            .catch(err => {
+                this.consoleError("Failed to play radio.", err);
+                // 400 = MISSING_USER_INFO (happens sometimes when spotify web session not initialized
+                // 401 = token expired
+                if (err.status == 400 || err.status == 401) {
+                    return err;
+                }
+                throw err;
+            });
     }
 
     getStatus() {
@@ -529,6 +605,15 @@ class Spotify {
     }
 
     async _setContextRadio(fnRetrieveitem) {
+        await this._verifyPlaybackState();
+
+        const item = await fnRetrieveitem();
+        this.consoleInfo(`Attempting to set ${item.body.name} ${item.body.type} radio.`);
+        return await this.play(`spotify:radio:${item.body.type}:${item.body.id}`);
+    }
+
+    // uses the selenium web client to perform action
+    async _setContextRadio__DEPRECATED(fnRetrieveitem) {
         await this._verifyPlaybackState();
 
         const item = await fnRetrieveitem();

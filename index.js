@@ -161,5 +161,5 @@ app.get("/register-messenger-endpoint", async (req, res) => {
 
 (async function initSpotify() {
     await spotify.initializeAuthToken()
-        .catch(e => console.error("Error during initialization: " + JSON.stringify(e)));
+        .catch(e => console.error("Error during initialization: ", e));
 })();
