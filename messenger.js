@@ -768,39 +768,37 @@ class Messenger {
 
     async getStatus(sender) {
         await this.sendTypingIndicator(sender, true);
-        await spotify.getStatus()
-            .then( status => {
-                let message = "";
-                if (status.now_playing) {
-                    message = "Now Playing: " + status.now_playing.song_title + " by " + status.now_playing.artist + "\n";
+        const status = spotify.getStatus();
+        try {
+            let message = "";
+            if (status.now_playing) {
+                message = "Now Playing: " + status.now_playing.song_title + " by " + status.now_playing.artist + "\n";
+            }
+            if (status.queued_tracks && status.queued_tracks.length) {
+                message += "Queued Tracks:\n";
+                for (let i = 1; i <= status.queued_tracks.length; i++) {
+                    const track = status.queued_tracks[i - 1];
+                    message += i + ": " + track.song_title + " by " + track.artist + "\n";
                 }
-                if (status.queued_tracks && status.queued_tracks.length) {
-                    message += "Queued Tracks:\n";
-                    for (let i = 1; i <= status.queued_tracks.length; i++) {
-                        const track = status.queued_tracks[i - 1];
-                        message += i + ": " + track.song_title + " by " + track.artist + "\n";
-                    }
-                } else {
-                    message += "There are no queued tracks.\n";
+            } else {
+                message += "There are no queued tracks.\n";
+            }
+            if (status.context) {
+                if (status.context.type == "playlist") {
+                    message += "Current playlist: " + status.context.name;
+                } else if (status.context.type == "album") {
+                    message += "Current album: " + status.context.name + " by " + status.context.artists;
+                } else if (status.context.name) {
+                    message += "Current context: " + status.context.name +
+                        (status.context.artists ? " by " + status.context.artists : "") + " " + status.context.type;
                 }
-                if (status.context) {
-                    if (status.context.type == "playlist") {
-                        message += "Current playlist: " + status.context.name;
-                    }
-                    else if (status.context.type == "album") {
-                        message += "Current album: " + status.context.name + " by " + status.context.artists;
-                    }
-                    else if (status.context.name) {
-                        message += "Current context: " + status.context.name +
-                            (status.context.artists ? " by " + status.context.artists : "") + " " + status.context.type;
-                    }
-                }
-                this.sendMessage(sender, {text: message.trim().substr(0, 2000)}); // hard-limit set by messenger
-            })
-            .catch( error => {
-                this.consoleError("Failed to get status", error);
-                this.sendMessage(sender, { text: "Oops.. Computer says no. Maybe try again later." });
-            });
+            }
+            await this.sendMessage(sender, {text: message.trim().substr(0, 2000)}); // hard-limit set by messenger
+
+        } catch (error) {
+            this.consoleError("Failed to get status", error);
+            await this.sendMessage(sender, {text: "Oops.. Computer says no. Maybe try again later."});
+        }
         await this.sendTypingIndicator(sender, false);
     }
 

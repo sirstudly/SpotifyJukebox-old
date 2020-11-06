@@ -17,7 +17,8 @@
     "request-promise": "^4.2.4",
     "selenium-webdriver": "^4.0.0-alpha.5",
     "spotify-web-api-node": "^5.0.0",
-    "superagent": "^6.1.0"
+    "superagent": "^6.1.0",
+    "websocket": "^1.0.32"
   },
   "devDependencies": {
     "dotenv": "^8.0.0"

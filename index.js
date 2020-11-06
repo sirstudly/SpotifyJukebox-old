@@ -94,9 +94,7 @@ app.get("/search-all", async (req, res) => {
 app.get("/now-playing", async (req, res) => {
     res.set('Content-Type', 'application/json');
     res.set('Access-Control-Allow-Origin', '*');
-    spotify.getStatus()
-        .then(state => res.status(200).send(state))
-        .catch(err => res.status(500).send({error: err.message}));
+    res.status(200).send(spotify.getStatus());
 });
 
 app.get("/get-devices", async (req, res) => {

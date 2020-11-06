@@ -1,4 +1,5 @@
 const SpotifyWebApi = require("spotify-web-api-node");
+const W3CWebSocket = require('websocket').w3cwebsocket;
 const agent = require('superagent').agent();
 const {Builder, By, Key, until} = require('selenium-webdriver');
 const chrome = require("selenium-webdriver/chrome");
@@ -69,46 +70,54 @@ class Spotify {
 
         await this.loginToSpotifyWeb(authorizeUrl)
             .catch(e => this.consoleError("Error initializing Spotify web:", e));
-        this.web_auth = await this._initWebToken();
-        this.consoleInfo("web-auth:", this.web_auth);
+        await this.refreshWebAuthToken();
+        await this._initWebsocket();
     }
 
     /**
      * Web token is used as bearer authorization for certain (unpublished) API requests.
-     * @returns {Promise<T | void>}
-     * @private
      */
-    async _initWebToken() {
+    async refreshWebAuthToken() {
         const cookies = await this.driver.manage().getCookies().then(ck => ck.map(c => c.name + "=" + c.value).join(";"));
-        return await agent.get("https://open.spotify.com/get_access_token")
+        this.web_auth = await agent.get("https://open.spotify.com/get_access_token")
             .query({reason: "transport", productType: "web_player"})
             .set('Content-Type', 'application/json')
             .set('User-Agent', 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/78.0.3904.97 Safari/537.36')
             .set('Cookie', cookies)
             .then(resp => {
                 return {
-                    accessToken: resp.body.accessToken,
-                    tokenExpiry: resp.body.accessTokenExpirationTimestampMs
+                    access_token: resp.body.accessToken,
+                    expires_at: resp.body.accessTokenExpirationTimestampMs
                 }
             })
             .catch(err => {
                 this.consoleError("Failed to initialize web token.", err);
                 throw err;
             });
+        this.consoleInfo("Web Access Token:", this.web_auth);
     }
 
     async loginToSpotifyWeb(authorizeUrl) {
         await this.driver.get(authorizeUrl);
-        await this.driver.findElements(By.id("auth-accept")).then( e => {
-            for( const elem of e ) {
+
+        // intermittent ERR_CONNECTION_CLOSED issue
+        await this.driver.findElements(By.id("reload-button")).then(e => {
+            for (const elem of e) {
+                this.consoleInfo("Page timeout? Clicking on reload.");
+                elem.click().then(() => this.loginToSpotifyWeb(authorizeUrl));
+            }
+        });
+
+        await this.driver.findElements(By.id("auth-accept")).then(e => {
+            for (const elem of e) {
                 this.consoleInfo("Spotify Authorization. Clicking on Accept");
                 elem.click();
             }
         });
 
         // authenticate if we have to authenticate
-        await this.driver.findElements(By.id("login-button")).then( e => {
-            if(e.length) {
+        await this.driver.findElements(By.id("login-button")).then(e => {
+            if (e.length) {
                 this.doLogin()
             }
         });
@@ -120,6 +129,16 @@ class Spotify {
             return false;
         }
         else if (this.auth.expires_at < new Date()) {
+            return false;
+        }
+        return true;
+    }
+
+    isWebAuthTokenValid() {
+        if (this.web_auth == undefined || this.web_auth.expires_at == undefined) {
+            return false;
+        }
+        else if (this.web_auth.expires_at < new Date()) {
             return false;
         }
         return true;
@@ -341,6 +360,7 @@ class Spotify {
             const result = await this.api.addToQueue(trackURI,
                 {device_id: process.env.SPOTIFY_PREFERRED_DEVICE_ID});
             this.consoleInfo("Queued track response:", result);
+            return result;
         });
     }
 
@@ -401,11 +421,6 @@ class Spotify {
             } else {
                 const webPlayerId = await this._getWebPlayerId();
                 response = await this._play(uri, webPlayerId, process.env.SPOTIFY_PREFERRED_DEVICE_ID);
-                if (response.status == 401 || response.status == 400) { // token expiry
-                    this.web_auth = await this._initWebToken();
-                    this.consoleInfo("web-auth:", this.web_auth);
-                    response = await this._play(uri, webPlayerId, process.env.SPOTIFY_PREFERRED_DEVICE_ID);
-                }
             }
             this.consoleInfo("play response:", response);
             await this.forceRepeatShuffle();
@@ -419,6 +434,7 @@ class Spotify {
         devices = devices.body.devices.filter(fn_filter_web_player);
         if (devices.length == 0) {
             await this.verifyLoggedIn();
+            devices = await this.getMyDevices();
             devices = devices.body.devices.filter(fn_filter_web_player);
             if (devices.length == 0) {
                 throw new ReferenceError("Error looking up device. Please try again later.");
@@ -435,9 +451,12 @@ class Spotify {
      * @returns {Promise<T | *>}
      * @private
      */
-    _play(uri, fromDeviceId, toDeviceId) {
+    async _play(uri, fromDeviceId, toDeviceId) {
+        if (!this.isWebAuthTokenValid()) {
+            await this.refreshWebAuthToken();
+        }
         return agent.post(`https://gew-spclient.spotify.com/connect-state/v1/player/command/from/${fromDeviceId}/to/${toDeviceId}`)
-            .auth(this.web_auth.accessToken, {type: 'bearer'})
+            .auth(this.web_auth.access_token, {type: 'bearer'})
             .set('Content-Type', 'application/json') // text/plain;charset=UTF-8 (in chrome web player)
             .set('User-Agent', 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/78.0.3904.97 Safari/537.36')
             .buffer(true)
@@ -466,75 +485,155 @@ class Spotify {
             .then(resp => JSON.parse(resp.text))
             .catch(err => {
                 this.consoleError("Failed to play radio.", err);
-                // 400 = MISSING_USER_INFO (happens sometimes when spotify web session not initialized
-                // 401 = token expired
-                if (err.status == 400 || err.status == 401) {
-                    return err;
-                }
                 throw err;
             });
     }
 
     getStatus() {
-        return this.webqueue(() => this._getStatus());
+        return this.nowPlaying;
     }
 
-    async _getStatus() {
-        const endpoint = "https://gew-spclient.spotify.com/connect-state/v1/devices/hobs_"
-            + process.env.SPOTIFY_PREFERRED_DEVICE_ID.substr(0, 35);
-        let connect_state = await this._getConnectState(endpoint);
-        if(connect_state.status == 401 || connect_state.status == 400) { // token expiry
-            this.web_auth = await this._initWebToken();
-            this.consoleInfo("web-auth:", this.web_auth);
-            connect_state = await this._getConnectState(endpoint);
+    async _getConnectState() {
+        if (!this.isWebAuthTokenValid()) {
+            await this.refreshWebAuthToken();
         }
-
-        // for efficiency, get all track info in one request
-        let trackIds = [connect_state.player_state.track.uri];
-        trackIds.push(...connect_state.player_state.next_tracks
-            .filter(t => t.metadata.is_queued == 'true')
-            .map(t => t.uri));
-        trackIds = trackIds.slice(0, 50) // API allows for max of 50
-            .map(uri => uri.substr(uri.lastIndexOf(":") + 1));
-        const tracks = await this.getTracks(trackIds);
-        const getTrackInfo = (track) => { return {
-            song_title: track.name,
-                artist: track.artists.map(a => a.name).join(', ')
-        }};
-        const result = {
-            now_playing: getTrackInfo(tracks[0]),
-            queued_tracks: tracks.slice(1).map(t => getTrackInfo(t)),
-            context: await this._getCurrentContext(connect_state.player_state.context_uri)
-        };
-        return result;
-    }
-
-    _getConnectState(url) {
-        return agent.put(url)
-            .auth(this.web_auth.accessToken, {type: 'bearer'})
+        if (!this.spotifyConnectionId) {
+            throw new ReferenceError("Spotify connection not initialized.");
+        }
+        const webPlayerDeviceId = await this._getWebPlayerId();
+        return agent.put("https://gew-spclient.spotify.com/connect-state/v1/devices/hobs_" + webPlayerDeviceId.substr(0, 35))
+            .auth(this.web_auth.access_token, {type: 'bearer'})
             .set('Content-Type', 'application/json')
             .set('User-Agent', 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/78.0.3904.97 Safari/537.36')
-            // X-Spotify-ConnectionId is received from wss://gew-dealer.spotify.com/?access_token=XXXXXXXXXXX
-            // although, it doesn't seem to matter? can use a made up connection id and still get response?
-            // WSS also has cluster events - good for viewing live track times, etc
-            .set('X-Spotify-Connection-Id', 'M2JmZmI1NTEtM2ViNi00ODFmLWFmOTEtMzk5MDViZjI0M2E2K2RlYWxlcit0Y3A6Ly9nZXcxLWRlYWxlci1iLXEwMzQuZ2V3MS5zcG90aWZ5Lm5ldDo1NzAwKzQ5MjgwODMwNjU1RjhBMEU4QkZCRDA1QUZCMTQ0MUNERDI4MzcxRUVCNUNDMzUyNDA3MDVDRDQ0OTAyNERDRDQ=')
+            .set('X-Spotify-Connection-Id', this.spotifyConnectionId)
             .buffer(true) // because content-type isn't set in the response header, we need to get the raw text rather than the (parsed) body
             .send({
-                "member_type": "CONNECT_STATE",
-                // web player has capabilities { "can_be_player": false, "hidden": true }
-                // not sure how this is used...
-                "device": {"device_info": {"capabilities": {}}}
+                member_type: "CONNECT_STATE",
+                device: {device_info: {capabilities: {can_be_player: false, hidden: true}}}
             })
             .then(resp => JSON.parse(resp.text))
             .catch(err => {
                 this.consoleError("Failed to retrieve connection state.", err);
-                // 400 = MISSING_USER_INFO (happens sometimes when spotify web session not initialized
-                // 401 = token expired
-                if(err.status == 400 || err.status == 401) {
-                    return err;
-                }
                 throw err;
             });
+    }
+
+    /**
+     * Register for updates on the Spotify websocket service.
+     * @private
+     */
+    async _registerForNotifications() {
+        if (!this.isWebAuthTokenValid()) {
+            await this.refreshWebAuthToken();
+        }
+        if (!this.spotifyConnectionId || !this.web_auth) {
+            throw new ReferenceError("Spotify connection not initialized.");
+        }
+        return agent.put("https://api.spotify.com/v1/me/notifications/user")
+            .auth(this.web_auth.access_token, {type: 'bearer'})
+            .set('Content-Type', 'application/json')
+            .set('User-Agent', 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/78.0.3904.97 Safari/537.36')
+            .buffer(true) // because content-type isn't set in the response header, we need to get the raw text rather than the (parsed) body
+            .query({connection_id: this.spotifyConnectionId})
+            .then(resp => JSON.parse(resp.text))
+            .catch(err => {
+                this.consoleError("Failed to register for notifications.", err);
+                throw err;
+            });
+    }
+
+    async _initWebsocket() {
+        this.consoleInfo("WS: Initializing websocket to Spotify.");
+        if (!this.isWebAuthTokenValid()) {
+            await this.refreshWebAuthToken();
+        }
+        this.ws = new W3CWebSocket("wss://gew-dealer.spotify.com/?access_token=" + this.web_auth.access_token);
+        this.ws.onerror = (error) => this.consoleError('WS Connect Error:', error);
+        this.ws.onopen = () => {
+            this.consoleInfo('WS connected');
+            this.ws.isAlive = true;
+
+            this.ws.interval = setInterval( () => {
+                if(this.ws.isAlive === false) {
+                    this.consoleInfo("WS: Did not receive echo back. Forcing disconnect.");
+                    return this.ws.close();
+                }
+                this.ws.isAlive = false;
+                this.consoleInfo("WS: sending ping...");
+                this.ws.send(JSON.stringify({"type":"ping"}));
+            }, 30000 );
+        }
+        this.ws.onclose = () => {
+            this.consoleInfo("WS: Disconnected!");
+            clearInterval(this.ws.interval);
+            this.sleep(2000).then(() => this._initWebsocket()); // keepalive!
+        }
+        this.ws.onmessage = async(event) => {
+            const payload = JSON.parse(event.data);
+            if(payload.type === "pong") {
+                this.consoleInfo("WS: received echo back :)");
+                this.ws.isAlive = true;
+            }
+            else {
+                this.consoleInfo("WS message:", payload)
+                if(payload.headers['Spotify-Connection-Id']) {
+                    try {
+                        this.spotifyConnectionId = payload.headers['Spotify-Connection-Id'];
+                        this.consoleInfo("WS initialized spotify-connection-id: " + this.spotifyConnectionId);
+
+                        let resp = await this._registerForNotifications();
+                        this.consoleInfo("WS notification registration response: ", resp);
+                        // this should now trigger events
+                        resp = await this._getConnectState();
+                        this.consoleInfo("WS connection state response: ", resp);
+                        await this._updateNowPlaying(resp.player_state);
+
+                    } catch (ex) {
+                        this.consoleError("Failed to register new connection id:", ex);
+                    }
+                }
+                else {
+                    // update what's currently playing based on the CHANGE event
+                    if(payload.payloads) {
+                        const activeDevices = payload.payloads.filter(p => p.devices_that_changed && p.devices_that_changed.includes(process.env.SPOTIFY_PREFERRED_DEVICE_ID));
+                        if (activeDevices.length) {
+                            await this._updateNowPlaying(activeDevices[0].cluster.player_state);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Updates this.nowPlaying with the currently playing/queued and context.
+     * @param playerState Object
+     * @returns {Promise<void>}
+     * @private
+     */
+    async _updateNowPlaying(playerState) {
+        if(playerState) {
+            // for efficiency, get all track info in one request
+            let trackIds = [playerState.track.uri];
+            trackIds.push(...playerState.next_tracks
+                .filter(t => t.metadata.is_queued == 'true')
+                .map(t => t.uri));
+            trackIds = trackIds.slice(0, 50) // API allows for max of 50
+                .map(uri => uri.substr(uri.lastIndexOf(":") + 1));
+            const tracks = await this.getTracks(trackIds);
+            const getTrackInfo = (track) => {
+                return {
+                    song_title: track.name,
+                    artist: track.artists.map(a => a.name).join(', ')
+                }
+            };
+            this.nowPlaying = {
+                now_playing: getTrackInfo(tracks[0]),
+                queued_tracks: tracks.slice(1).map(t => getTrackInfo(t)),
+                context: await this._getCurrentContext(playerState.context_uri)
+            };
+            this.consoleInfo("Now Playing:", this.nowPlaying);
+        }
     }
 
     /**
