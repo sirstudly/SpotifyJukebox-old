@@ -782,8 +782,8 @@ class Spotify {
         else {
             this.consoleInfo("CHROME: No login button. Already logged in?");
             const userLink = "//span[@data-testid='user-widget-name']";
-            await this.driver.wait(until.elementLocated(By.xpath(userLink)), DEFAULT_WAIT_MS);
-            const accountName = await this.driver.findElement(By.xpath(userLink)).getText();
+            const elem = await this.driver.wait(until.elementLocated(By.xpath(userLink)), DEFAULT_WAIT_MS);
+            const accountName = await elem.getText();
             this.consoleInfo("CHROME: Logged in as " + accountName);
         }
     }
