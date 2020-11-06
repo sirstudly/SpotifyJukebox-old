@@ -612,7 +612,7 @@ class Spotify {
      * @private
      */
     async _updateNowPlaying(playerState) {
-        if(playerState) {
+        if(playerState && playerState.track && playerState.next_tracks) {
             // for efficiency, get all track info in one request
             let trackIds = [playerState.track.uri];
             trackIds.push(...playerState.next_tracks
@@ -633,6 +633,9 @@ class Spotify {
                 context: await this._getCurrentContext(playerState.context_uri)
             };
             this.consoleInfo("Now Playing:", this.nowPlaying);
+        }
+        else {
+            this.consoleInfo("No track information found in player state. Now playing not updated.");
         }
     }
 
