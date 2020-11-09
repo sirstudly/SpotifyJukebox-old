@@ -137,6 +137,14 @@ app.get("/get-playback-state", async (req, res) => {
         .catch(err => res.status(500).send({error: err.message}));
 });
 
+app.get("/get-connect-state", async (req, res) => {
+    res.set('Content-Type', 'application/json');
+    res.set('Access-Control-Allow-Origin', '*');
+    spotify._getConnectState()
+        .then(state => res.status(200).send(state))
+        .catch(err => res.status(500).send({error: err.message}));
+});
+
 app.get("/dump-screenshot", async (req, res) => {
     spotify.saveScreenshot("screenshot.png")
         .then(() => res.sendFile(path.join(__dirname, 'screenshot.png')))

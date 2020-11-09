@@ -1,0 +1,16 @@
+diff --git a/node_modules/spotify-web-api-node/src/http-manager.js b/node_modules/spotify-web-api-node/src/http-manager.js
+index 3839908..dbdd646 100644
+--- a/node_modules/spotify-web-api-node/src/http-manager.js
++++ b/node_modules/spotify-web-api-node/src/http-manager.js
+@@ -31,6 +31,11 @@ var _getParametersFromRequest = function(request) {
+ };
+ 
+ var _toError = function(response) {
++  if (typeof response === 'undefined' || response === null) {
++    /* RC 2020-11-09: possible for response to be undefined */
++    return new WebapiError(null, null, null, 'WTF?! Received empty response.');
++  }
++
+   if (typeof response.body === 'object' && response.body.error && typeof response.body.error === 'object' && response.body.error.reason) {
+     return new WebapiPlayerError(response.body, response.headers, response.statusCode);
+   }

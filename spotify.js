@@ -572,7 +572,12 @@ class Spotify {
             const payload = JSON.parse(event.data);
             if(payload.type === "pong") {
                 this.consoleInfo("WS: received echo back :)");
-                this.ws.isAlive = true;
+                if (this.nowPlaying && Date.now() - this.nowPlaying.last_updated > 600000) {
+                    this.consoleInfo("Over 10 minutes since last update... forcing disconnect");
+                    this.nowPlaying.last_updated = Date.now();
+                } else {
+                    this.ws.isAlive = true;
+                }
             }
             else {
                 this.consoleInfo("WS message:", payload)
@@ -590,6 +595,7 @@ class Spotify {
 
                     } catch (ex) {
                         this.consoleError("Failed to register new connection id:", ex);
+                        this.ws.isAlive = false; // try again by forcing connection reset
                     }
                 }
                 else {
@@ -628,6 +634,7 @@ class Spotify {
                 }
             };
             this.nowPlaying = {
+                last_updated: Date.now(),
                 now_playing: getTrackInfo(tracks[0]),
                 queued_tracks: tracks.slice(1).map(t => getTrackInfo(t)),
                 context: await this._getCurrentContext(playerState.context_uri)
@@ -658,8 +665,8 @@ class Spotify {
 
         // first, check that our preferred device is active and playing something
         let devices = await this.getMyDevices();
-        devices = devices.body.devices.filter( dev => dev.id == process.env.SPOTIFY_PREFERRED_DEVICE_ID );
-        if(devices.length == 0) {
+        devices = devices.body.devices.filter(dev => dev.id == process.env.SPOTIFY_PREFERRED_DEVICE_ID);
+        if (devices.length == 0) {
             throw new ReferenceError("Current playback device not found.");
         }
 
@@ -670,7 +677,8 @@ class Spotify {
             if (!playback.body || (playback.body.context == null && playback.body.item == null)) {
                 await this.api.play({
                     device_id: process.env.SPOTIFY_PREFERRED_DEVICE_ID,
-                    context_uri: process.env.SPOTIFY_FALLBACK_PLAYLIST_URI
+                    context_uri: this.nowPlaying && this.nowPlaying.context && this.nowPlaying.context.uri ?
+                        this.nowPlaying.context.uri : process.env.SPOTIFY_FALLBACK_PLAYLIST_URI
                 });
             } else { // resume previous context
                 await this.api.play({device_id: process.env.SPOTIFY_PREFERRED_DEVICE_ID});
@@ -744,7 +752,8 @@ class Spotify {
             const playlist = await this.getPlaylist(id, {fields: "name,description"})
             return {
                 type: "playlist" + (is_radio ? " radio" : ""),
-                name: playlist.name
+                name: playlist.name,
+                uri: contextUri
             };
         }
         else if (contextUri.indexOf("album") >= 0) {
@@ -752,14 +761,16 @@ class Spotify {
             return {
                 type: "album" + (is_radio ? " radio" : ""),
                 name: album.name,
-                artists: album.artists.map(a => a.name).join(", ")
+                artists: album.artists.map(a => a.name).join(", "),
+                uri: contextUri
             };
         }
         else if (contextUri.indexOf("artist") >= 0) {
             const artist = await this.getArtist(id)
             return {
                 type: "artist" + (is_radio ? " radio" : ""),
-                name: artist.name
+                name: artist.name,
+                uri: contextUri
             };
         }
         else if (contextUri.indexOf("track") >= 0) {
@@ -767,7 +778,8 @@ class Spotify {
             return {
                 type: "track" + (is_radio ? " radio" : ""),
                 name: track.name,
-                artists: track.artists.map(a => a.name).join(', ')
+                artists: track.artists.map(a => a.name).join(', '),
+                uri: contextUri
             };
         }
         this.consoleError("Unable to determine context from URI: " + contextUri)
