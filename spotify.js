@@ -575,6 +575,7 @@ class Spotify {
                 if (this.nowPlaying && Date.now() - this.nowPlaying.last_updated > 600000) {
                     this.consoleInfo("Over 10 minutes since last update... forcing disconnect");
                     this.nowPlaying.last_updated = Date.now();
+                    await this._verifyPlaybackState();
                 } else {
                     this.ws.isAlive = true;
                 }
