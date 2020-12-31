@@ -966,14 +966,19 @@ class Messenger {
         const options = this.getSendOptions(recipient);
         options.body.sender_action = typing ? "typing_on" : "typing_off";
 
-        return this.send(options);
+        // no longer supported
+        // https://developers.facebook.com/docs/messenger-platform/europe-updates
+        return Promise.resolve(false);
+//        return this.send(options);
     }
 
     sendReadReceipt(recipient) {
         const options = this.getSendOptions(recipient);
         options.body.sender_action = "mark_seen";
 
-        return this.send(options);
+        // no longer supported
+        return Promise.resolve(false);
+//        return this.send(options);
     }
 
     sendMessage(recipient, message) {

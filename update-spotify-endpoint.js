@@ -17,14 +17,15 @@ async function updateSpotifyCallback(driver, ngrokCallbackUrl) {
         const mainWindowHandle = await driver.getWindowHandle();
         await driver.findElement(By.xpath("//button[text()='Log in']")).click();
         console.info("Waiting for login to Spotify");
-        if (process.env.SPOTIFY_USERNAME && (await driver.findElements(By.id("login-username"))).length() > 0 ) {
-            // switch to newly opened window
-            const allHandles = await driver.getAllWindowHandles();
-            for (let i = 0; i < allHandles.length; i++) {
-                if (allHandles[i] != mainWindowHandle) {
-                    await driver.switchTo().window(allHandles[i]);
-                }
+        // switch to newly opened window
+        const allHandles = await driver.getAllWindowHandles();
+        for (let i = 0; i < allHandles.length; i++) {
+            if (allHandles[i] != mainWindowHandle) {
+                await driver.switchTo().window(allHandles[i]);
             }
+        }
+        const loginFields = await driver.findElements(By.id("login-username"));
+        if (process.env.SPOTIFY_USERNAME && loginFields.length > 0 ) {
             await driver.findElement(By.id("login-username")).sendKeys(process.env.SPOTIFY_USERNAME);
             await driver.findElement(By.id("login-password")).sendKeys(process.env.SPOTIFY_PASSWORD);
             await driver.findElement(By.id("login-button")).click();
