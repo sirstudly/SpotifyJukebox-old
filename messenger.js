@@ -93,9 +93,11 @@ class Messenger {
         }
         else {
             this.searchMusic(event.sender.id, event.message.text);
-            if( event.message.text.toLowerCase().indexOf('volume') !== -1 ) {
-                this.sendMessage(event.sender.id, {text: "If you wanted to change the volume, type :volume to check" +
-                        " the current level. :volume 50 will set it to 50% or :volume 100 will set it to 100%."});
+            if (process.env.VOLUME_ADJUST_DISABLED !== 'true' && event.message.text.toLowerCase().indexOf('volume') !== -1) {
+                this.sendMessage(event.sender.id, {
+                    text: "If you wanted to change the volume, type :volume to check" +
+                        " the current level. :volume 50 will set it to 50% or :volume 100 will set it to 100%."
+                });
             }
         }
     }
@@ -813,15 +815,20 @@ class Messenger {
                 });
         }
         else {
-            await spotify.setVolume(volume)
-                .then(resp => {
-                    this.consoleInfo("Volume response:", resp);
-                    this.sendMessage(sender, {text: "Volume set."});
-                })
-                .catch(error => {
-                    this.consoleError("Failed to set volume.", error);
-                    this.sendMessage(sender, {text: "Unable to set volume: " + error.message});
-                });
+            if (process.env.VOLUME_ADJUST_DISABLED === 'true') {
+                await this.sendMessage(sender, {text: "Volume adjustment is currently disabled."});
+            }
+            else {
+                await spotify.setVolume(volume)
+                    .then(resp => {
+                        this.consoleInfo("Volume response:", resp);
+                        this.sendMessage(sender, {text: "Volume set."});
+                    })
+                    .catch(error => {
+                        this.consoleError("Failed to set volume.", error);
+                        this.sendMessage(sender, {text: "Unable to set volume: " + error.message});
+                    });
+            }
         }
         await this.sendTypingIndicator(sender, false);
     }

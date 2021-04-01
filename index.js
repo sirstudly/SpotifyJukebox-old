@@ -86,7 +86,10 @@ app.get("/search", async (req, res) => {
 app.get("/search-all", async (req, res) => {
     res.set('Content-Type', 'application/json');
     res.set('Access-Control-Allow-Origin', '*');
-    spotify.search(req.query.terms, ['track', 'album', 'artist', 'playlist'], 0, 20)
+    const types = req.query.types ? req.query.types.split(',') : ['track', 'album', 'artist', 'playlist'];
+    const skip = req.query.skip ? parseInt(req.query.skip) : 0;
+    const limit = req.query.limit ? parseInt(req.query.limit) : 20;
+    spotify.search(req.query.terms, types, skip, limit)
         .then(state => res.status(200).send(state))
         .catch(err => res.status(500).send({error: err.message}));
 });
