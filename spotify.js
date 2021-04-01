@@ -538,6 +538,9 @@ class Spotify {
             .then(resp => JSON.parse(resp.text))
             .catch(err => {
                 this.consoleError("Failed to register for notifications.", err);
+                if (err.status === 401) { // Unauthorized
+                    this.refreshWebAuthToken();
+                }
                 throw err;
             });
     }
@@ -575,7 +578,9 @@ class Spotify {
                 if (this.nowPlaying && Date.now() - this.nowPlaying.last_updated > 600000) {
                     this.consoleInfo("Over 10 minutes since last update... forcing disconnect");
                     this.nowPlaying.last_updated = Date.now();
-                    await this._verifyPlaybackState();
+                    await this._verifyPlaybackState().catch(e => {
+                        this.consoleError("Failed to verify playback state: ", e);
+                    });
                 } else {
                     this.ws.isAlive = true;
                 }

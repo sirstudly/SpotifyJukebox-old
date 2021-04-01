@@ -5,7 +5,7 @@
 ## Update 2019-11-23
 
 This fork updates the original version which uses a custom "playlist" with one that does a true "queue" operation without altering the current playlist on Spotify. 
-There is also a "What's playing?" command which shows the complete list of queued songs. There is no API call for this so we do this using Spotify Web Player via Chrome (Selenium).
+There is also a "What's playing?" command which shows the complete list of queued songs. There is no API call for this so we emulate the WSS handshake the Spotify web player uses and listen for change events.
 
 Note, due to licensing restrictions on the integrated web player, this doesn't work on Linux distributions since it uses Chromium rather than Chrome.
 
@@ -33,7 +33,7 @@ The included .env file contains placeholder keys which you will need to provide.
    * Send the following POST request:
 ```
 curl -X POST \
-  'https://graph.facebook.com/v5.0/me/messenger_profile?access_token=<FILL IN ACCESS TOKEN HERE>' \
+  'https://graph.facebook.com/v9.0/me/messenger_profile?access_token=<FILL IN ACCESS TOKEN HERE>' \
   -H 'Content-Type: application/json' \
   -d '{
     "get_started": {
