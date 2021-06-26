@@ -91,8 +91,7 @@ class Spotify {
                 }
             })
             .catch(err => {
-                this.consoleError("Failed to initialize web token.", err);
-                throw err;
+                this.consoleError("Failed to initialize web token. Subsequent requests will likely fail.", err);
             });
         this.consoleInfo("Web Access Token:", this.web_auth);
     }
