@@ -89,9 +89,6 @@ class Spotify {
                     access_token: resp.body.accessToken,
                     expires_at: resp.body.accessTokenExpirationTimestampMs
                 }
-            })
-            .catch(err => {
-                this.consoleError("Failed to initialize web token. Subsequent requests will likely fail.", err);
             });
         this.consoleInfo("Web Access Token:", this.web_auth);
     }
@@ -568,7 +565,12 @@ class Spotify {
         this.ws.onclose = () => {
             this.consoleInfo("WS: Disconnected!");
             clearInterval(this.ws.interval);
-            this.sleep(2000).then(() => this._initWebsocket()); // keepalive!
+            this.sleep(2000)
+                .then(() => this._initWebsocket()) // keepalive!
+                .catch(e => {
+                    this.consoleError("Failed to reinitialize web socket: ", e);
+                    this.ws.onclose(); // retry indefinitely
+                });
         }
         this.ws.onmessage = async(event) => {
             const payload = JSON.parse(event.data);

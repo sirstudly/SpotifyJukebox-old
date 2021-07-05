@@ -5,8 +5,7 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "postinstall": "patch-package"
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "",
   "license": "ISC",
@@ -14,11 +13,10 @@
     "body-parser": "^1.19.0",
     "concurrent-queue": "^7.0.2",
     "express": "^4.17.0",
-    "patch-package": "^6.2.2",
     "request": "^2.88.0",
     "request-promise": "^4.2.4",
     "selenium-webdriver": "^4.0.0-alpha.5",
-    "spotify-web-api-node": "^5.0.0",
+    "spotify-web-api-node": "^5.0.2",
     "superagent": "^6.1.0",
     "websocket": "^1.0.32"
   },
