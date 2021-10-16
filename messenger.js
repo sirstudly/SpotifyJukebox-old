@@ -40,7 +40,7 @@ class Messenger {
             const command = event.message.text.toLowerCase().substr(1)
                 .split(/\s+/)
                 .filter(text => text.length);
-            if (command.length) {
+            if (command.length && false == this.isSenderOnBlacklist(event.sender.id)) {
                 switch (command[0]) {
                     case 'volume':
                         this.postVolume(event.sender.id, command.length == 1 ? null : command[1]);
@@ -114,6 +114,9 @@ class Messenger {
                 // Add the track (contained in the payload) to the Spotify queue.
                 // Note: We created this payload data when we created the button in searchMusic()
                 this.sendTypingIndicator(event.sender.id, true);
+                if (this.isSenderOnBlacklist(event.sender.id)) {
+                    break;
+                }
                 await spotify.queueTrack("spotify:track:" + payload.track).then( () => {
                     this.sendMessage(event.sender.id, {text: "Thanks! Your track has been submitted."});
                 }).catch( error => {
@@ -156,18 +159,30 @@ class Messenger {
                 break;
             }
             case Commands.SET_PLAYLIST: {
+                if (this.isSenderOnBlacklist(event.sender.id)) {
+                    break;
+                }
                 this.setPlaylist(event.sender.id, payload.playlist);
                 break;
             }
             case Commands.SET_PLAYLIST_RADIO: {
+                if (this.isSenderOnBlacklist(event.sender.id)) {
+                    break;
+                }
                 this.setPlaylistRadio(event.sender.id, payload.playlist);
                 break;
             }
             case Commands.PLAY_ALBUM: {
+                if (this.isSenderOnBlacklist(event.sender.id)) {
+                    break;
+                }
                 this.setAlbum(event.sender.id, payload.album);
                 break;
             }
             case Commands.PLAY_ALBUM_RADIO: {
+                if (this.isSenderOnBlacklist(event.sender.id)) {
+                    break;
+                }
                 this.setAlbumRadio(event.sender.id, payload.album);
                 break;
             }
@@ -176,10 +191,16 @@ class Messenger {
                 break;
             }
             case Commands.PLAY_ARTIST: {
+                if (this.isSenderOnBlacklist(event.sender.id)) {
+                    break;
+                }
                 this.setArtist(event.sender.id, payload.artist);
                 break;
             }
             case Commands.PLAY_ARTIST_RADIO: {
+                if (this.isSenderOnBlacklist(event.sender.id)) {
+                    break;
+                }
                 this.setArtistRadio(event.sender.id, payload.artist);
                 break;
             }
@@ -188,6 +209,14 @@ class Messenger {
                 break;
             }
         }
+    }
+
+    isSenderOnBlacklist(sender) {
+        if (process.env.USER_BLACKLIST && process.env.USER_BLACKLIST.includes(sender)) {
+            this.sendMessage(sender, {text: "Nah, I don't think so. You're a bit of a twat."});
+            return true;
+        }
+        return false;
     }
 
     async showSearchSelectButtons(sender, terms) {
