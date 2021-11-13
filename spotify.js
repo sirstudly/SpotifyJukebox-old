@@ -629,7 +629,7 @@ class Spotify {
             // for efficiency, get all track info in one request
             let trackIds = [playerState.track.uri];
             trackIds.push(...playerState.next_tracks
-                .filter(t => t.metadata.is_queued == 'true')
+                .filter(t => t.metadata && t.metadata.is_queued == 'true')
                 .map(t => t.uri));
             trackIds = trackIds.slice(0, 50) // API allows for max of 50
                 .map(uri => uri.substr(uri.lastIndexOf(":") + 1));
