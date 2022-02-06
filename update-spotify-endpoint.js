@@ -54,8 +54,8 @@ async function updateSpotifyCallback(driver, ngrokCallbackUrl) {
 (async () => {
 
     // first check if ngrok is running
-    await Promise.resolve(Request({uri: "http://localhost:4040/inspect/http"})
-        .catch(error => { console.error("Is ngrok running?"); process.exit(1); } ));
+    await Promise.resolve(Request({uri: "http://127.0.0.1:4040/inspect/http"})
+        .catch(error => { console.error("Is ngrok running? " + error); process.exit(1); } ));
 
     const chromeOptions = new chrome.Options();
     for( const opt of process.env.CHROME_OPTIONS.split(' ') ) {

@@ -546,7 +546,7 @@ class Spotify {
         if (!this.isWebAuthTokenValid()) {
             await this.refreshWebAuthToken();
         }
-        this.ws = new W3CWebSocket("wss://gew-dealer.spotify.com/?access_token=" + this.web_auth.access_token);
+        this.ws = new W3CWebSocket("wss://gew1-dealer.spotify.com/?access_token=" + this.web_auth.access_token);
         this.ws.onerror = (error) => this.consoleError('WS Connect Error:', error);
         this.ws.onopen = () => {
             this.consoleInfo('WS connected');
