@@ -113,10 +113,14 @@ class Messenger {
             case Commands.ADD_TRACK: {
                 // Add the track (contained in the payload) to the Spotify queue.
                 // Note: We created this payload data when we created the button in searchMusic()
-                this.sendTypingIndicator(event.sender.id, true);
                 if (this.isSenderOnBlacklist(event.sender.id)) {
                     break;
                 }
+                else if (await this.isTrackQueued(event.sender.id, payload.track)) {
+                    await this.sendMessage(event.sender.id, {text: "This track has already been queued."});
+                    break;
+                }
+                this.sendTypingIndicator(event.sender.id, true);
                 await spotify.queueTrack("spotify:track:" + payload.track).then( () => {
                     this.sendMessage(event.sender.id, {text: "Thanks! Your track has been submitted."});
                 }).catch( error => {
@@ -213,8 +217,16 @@ class Messenger {
 
     isSenderOnBlacklist(sender) {
         if (process.env.USER_BLACKLIST && process.env.USER_BLACKLIST.includes(sender)) {
-            this.sendMessage(sender, {text: "Nah, I don't think so. You're a bit of a twat."});
+            this.sendMessage(sender, {text: "Yeah, nah... I don't think so. You're a bit of a twat."});
             return true;
+        }
+        return false;
+    }
+
+    async isTrackQueued(sender, trackId) {
+        let nowPlaying = await this.getStatus(sender);
+        if (nowPlaying.queued_tracks && nowPlaying.queued_tracks.length) {
+            return nowPlaying.queued_tracks.filter(t => t.id == trackId).length > 0;
         }
         return false;
     }
@@ -831,6 +843,7 @@ class Messenger {
             await this.sendMessage(sender, {text: "Oops.. Computer says no. Maybe try again later."});
         }
         await this.sendTypingIndicator(sender, false);
+        return status;
     }
 
     async postVolume(sender, volume) {

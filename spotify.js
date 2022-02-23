@@ -180,15 +180,15 @@ class Spotify {
 
     async _updateMessengerCallback() {
         await this.driver.get(`https://developers.facebook.com/apps/${process.env.MESSENGER_APP_ID}/messenger/settings/`);
-        await this.driver.wait(until.elementLocated(By.xpath("//div[contains(text(), 'Edit Callback URL')]")), DEFAULT_WAIT_MS).click();
+        await this.driver.wait(until.elementLocated(By.xpath("//div[contains(text(), 'Edit callback URL')]")), DEFAULT_WAIT_MS).click();
         const endpoint = await this.driver.wait(until.elementLocated(By.xpath(
             "//input[@placeholder='Validation requests and Webhook notifications for this object will be sent to this URL.']")), DEFAULT_WAIT_MS);
         await this._clearWebElement(endpoint);
         await endpoint.sendKeys(this.ngrokEndpoint + "/webhook");
         await this.driver.findElement(By.xpath(
-            "//input[@placeholder='Token that Facebook will echo back to you as part of callback URL verification.']"))
+            "//input[@placeholder='Token that Meta will echo back to you as part of callback URL verification.']"))
             .sendKeys(process.env.MESSENGER_VERIFY_TOKEN);
-        await this.driver.wait(until.elementLocated(By.xpath("//div[contains(text(),'Verify and Save')]")), DEFAULT_WAIT_MS).click();
+        await this.driver.wait(until.elementLocated(By.xpath("//div[contains(text(),'Verify and save')]")), DEFAULT_WAIT_MS).click();
     }
 
     async _getNgrokEndpoint() {
@@ -636,6 +636,7 @@ class Spotify {
             const tracks = await this.getTracks(trackIds);
             const getTrackInfo = (track) => {
                 return {
+                    id: track.id,
                     song_title: track.name,
                     artist: track.artists.map(a => a.name).join(', ')
                 }
